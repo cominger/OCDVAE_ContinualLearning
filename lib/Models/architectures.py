@@ -656,12 +656,12 @@ class WRN_gan(nn.Module):
         z = self.latent_decoder(z)
         z = z.view(z.size(0), self.enc_channels, self.enc_spatial_dim_x, self.enc_spatial_dim_y)
         x = self.decoder(z)
+        x = torch.tanh(x)
         return x
 
     def generate(self):
         z = torch.randn(self.batch_size, self.latent_dim).to(self.device)
         x = self.decode(z)
-        x = torch.sigmoid(x)
         return x
 
     def forward(self, x):
@@ -674,19 +674,6 @@ class WRN_gan(nn.Module):
             output_samples[i] = self.decode(z)
             classification_samples[i] = self.classifier(z)
         return classification_samples, output_samples, z_mean, z_std
-
-    def forward_G(self, mu, std):
-        z = self.reparameterize(mu, std)
-        output_samples = self.decode(z)
-        return output_samples, z
-
-    def forward_E(self, x):
-        z_mean, z_std = self.encode(x)
-        classification_samples = torch.zeros(self.num_samples, x.size(0), self.num_classes).to(self.device)
-        for i in range(self.num_samples):
-            z = self.reparameterize(z_mean, z_std)
-            classification_samples[i] = self.classifier(z)
-        return classification_samples, z_mean, z_std
 
     def forward_D(self, x, y=None):
         x = self.discriminator(x, y)

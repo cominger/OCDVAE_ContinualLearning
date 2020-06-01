@@ -6,11 +6,12 @@ import numpy as np
 from lib.Utility.metrics import AverageMeter
 from lib.Utility.metrics import ConfusionMeter
 from lib.Utility.metrics import accuracy
+from lib.Utility.metrics import FID
 from lib.Utility.visualization import visualize_confusion
 from lib.Utility.visualization import visualize_image_grid
 
 
-def validate(Dataset, model, criterion, epoch, writer, device, save_path, args, class_mu=None, class_std=None):
+def validate(Dataset, model, criterion, epoch, writer, device, save_path, args):
     """
     Evaluates/validates the model
 
@@ -60,6 +61,13 @@ def validate(Dataset, model, criterion, epoch, writer, device, save_path, args, 
     # switch to evaluate mode
     model.eval()
 
+    act_val = None
+    act_gen = None
+    if args.FID:
+        FID_class = FID(device, args.batch_size, args.workers, True, args.FID_dims)
+        act_val = np.empty((len(Dataset.valset), args.FID_dims))
+        act_gen = np.empty((len(Dataset.valset), args.FID_dims))
+
     end = time.time()
 
     # evaluate the entire validation dataset
@@ -98,6 +106,19 @@ def validate(Dataset, model, criterion, epoch, writer, device, save_path, args, 
             class_output = torch.mean(class_samples, dim=0)
             recon_output = torch.mean(recon_samples, dim=0)
 
+            # FID score calcuations
+            if args.FID and (epoch % args.visualization_epoch == 0):
+                assert recon_output.shape == inp.shape, \
+                    'recon image and gt image should have same shape'
+
+                start_act = i*args.batch_size
+                end_act = start_act + target.size(0)
+                temp = FID_class._get_features(inp)
+                act_val[start_act:end_act] = temp.cpu().numpy().reshape(temp.size(0), -1)
+                temp = FID_class._get_features(recon_output)
+                act_gen[start_act:end_act] = temp.cpu().numpy().reshape(temp.size(0), -1)
+                del temp
+
             # measure accuracy, record loss, fill confusion matrix
             prec1 = accuracy(class_output, target)[0]
             top1.update(prec1.item(), inp.size(0))
@@ -127,7 +148,6 @@ def validate(Dataset, model, criterion, epoch, writer, device, save_path, args, 
                 recon_loss = F.binary_cross_entropy(recon, recon_target)
             else:
                 # If not autoregressive simply apply the Sigmoid and visualize
-                # recon = torch.sigmoid(recon_output)
                 recon = recon_output
                 if (i == (len(Dataset.val_loader) - 1)) and (epoch % args.visualization_epoch == 0):
                     visualize_image_grid(inp, writer, epoch + 1, 'input_snapshot', save_path)
@@ -139,7 +159,7 @@ def validate(Dataset, model, criterion, epoch, writer, device, save_path, args, 
             # across potential weighting terms.
             class_losses.update(class_loss.item(), inp.size(0))
             kld_losses.update(kld_loss.item() , inp.size(0))
-            recon_losses_nat.update(recon_loss.item() / torch.numel(inp), inp.size(0))
+            recon_losses_nat.update(recon_loss.item(), inp.size(0))
             losses.update((class_loss + recon_loss + kld_loss).item(), inp.size(0))
 
             # if we are learning continually, we need to calculate the base and new reconstruction losses at the end
@@ -184,20 +204,7 @@ def validate(Dataset, model, criterion, epoch, writer, device, save_path, args, 
 
                 if args.autoregression:
                     gen = model.module.pixelcnn.generate(gen)
-                if args.gan:
-                    batch_size = target.size(0)
-                    class_len = Dataset.num_classes
-                    if args.incremental_data:
-                        class_len = len(Dataset.seen_tasks) 
-                    for c in range(class_len):
-                        zs = torch.rand(batch_size, model.module.latent_dim).to(device)
-                        for b in range(batch_size):
-                            zs[b] = model.module.reparameterize(class_mu[c],class_std[c])
-                        gen = model.module.decode(zs)
-                        name = str(c) + '_generation_snapshot'
-                        visualize_image_grid(gen, writer, epoch + 1, name , save_path)
-                else:
-                    visualize_image_grid(gen, writer, epoch + 1, 'generation_snapshot', save_path)
+                visualize_image_grid(gen, writer, epoch + 1, 'generation_snapshot', save_path)
 
             # Print progress
             if i % args.print_freq == 0:
@@ -217,6 +224,9 @@ def validate(Dataset, model, criterion, epoch, writer, device, save_path, args, 
     writer.add_scalar('validation/val_class_loss', class_losses.avg, epoch)
     writer.add_scalar('validation/val_recon_loss_nat', recon_losses_nat.avg, epoch)
     writer.add_scalar('validation/val_KLD', kld_losses.avg, epoch)
+    if args.FID and (epoch % args.visualization_epoch == 0):
+        fid = FID_class._get_FID_Features(act_val, act_gen)
+        writer.add_scalar('validation/val_FID_score', fid, epoch)
 
     if args.autoregression:
         writer.add_scalar('validation/val_recon_loss_bits_per_dim', recon_losses_bits_per_dim.avg, epoch)

@@ -108,9 +108,9 @@ def get_incremental_dataset(parent_class, args):
             re_patch_size = patch_size+int(math.ceil(patch_size * 0.1))
             train_transforms = transforms.Compose([
                 transforms.ToPILImage(mode = "RGB"),
-                transforms.Resize(size = (re_patch_size,re_patch_size)),
-                transforms.RandomCrop(size=(patch_size,patch_size)),
-                # transforms.Resize(patch_size),
+                # transforms.Resize(size = (re_patch_size,re_patch_size)),
+                # transforms.RandomCrop(size=(patch_size,patch_size)),
+                transforms.Resize(patch_size),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
             ])
@@ -220,17 +220,12 @@ def get_incremental_dataset(parent_class, args):
 
             val_loader = torch.utils.data.DataLoader(self.valset, batch_size=batch_size, shuffle=True,
                                                      num_workers=workers, pin_memory=is_gpu)
-            # train_loader = torch.utils.data.DataLoader(self.trainset, batch_size=batch_size, shuffle=True,
-            #                                            num_workers=workers, pin_memory=False, sampler=None)
-
-            # val_loader = torch.utils.data.DataLoader(self.valset, batch_size=batch_size, shuffle=True,
-            #                                          num_workers=workers, pin_memory=False)
 
             return train_loader, val_loader
 
         def increment_tasks(self, model, batch_size, workers, writer, save_path, is_gpu,
                             upper_bound_baseline=False, generative_replay=False, openset_generative_replay=False,
-                            openset_threshold=0.05, openset_tailsize=0.05, autoregression=False, condition = False):
+                            openset_threshold=0.05, openset_tailsize=0.05, autoregression=False):
             """
             Main function to increment tasks/classes. Has multiple options to specify whether the new dataset should
             provide an upper bound for a continual learning experiment by concatenation of new real data with
@@ -287,8 +282,7 @@ def get_incremental_dataset(parent_class, args):
                                                   openset=openset_generative_replay,
                                                   openset_threshold=openset_threshold,
                                                   openset_tailsize=openset_tailsize,
-                                                  autoregression=autoregression,
-                                                  condition = condition)
+                                                  autoregression=autoregression)
                 new_trainsets.append(genset)
                 self.trainset = torch.utils.data.ConcatDataset(new_trainsets)
             else:
@@ -309,7 +303,7 @@ def get_incremental_dataset(parent_class, args):
 
         def generate_seen_tasks(self, model, batch_size, seen_dataset_size, writer, save_path,
                                 openset=False, openset_threshold=0.05, openset_tailsize=0.05,
-                                 autoregression=False, condition = False):
+                                 autoregression=False):
             """
             The function implementing the actual generative replay and openset generative replay with statistical
             outlier rejection.
@@ -487,32 +481,14 @@ def get_incremental_dataset(parent_class, args):
             # very close to zero, model not having trained at all or approximate posterior deviating extremely from the
             # prior) or isn't desired, conventional generative replay is conducted.
             if not openset or not openset_success:
-                if condition:
-                    dataset_train_dict = eval_dataset(model, self.train_loader,
-                                                      len(self.seen_tasks) - self.num_increment_tasks, self.device,
-                                                      samples=self.args.var_samples)
-                    z_means, z_std = {}, {}
-                    for i in range(len(self.seen_tasks) - self.num_increment_tasks):
-                        if len(dataset_train_dict["zs_correct"][i])>0:
-                            z_means[i] = torch.mean(dataset_train_dict["zs_correct"][i],dim=0)
-                            z_std[i] = torch.std(dataset_train_dict["zs_correct"][i],dim=0)
-
-                        else:
-                            z_means[i] = torch.zeros(1,args.var_latent_dim)
-                            z_std[i] = torch.zeros(1,args.var_latent_dim)
-
                 print("Using generative model to replay old data")
                 for i in trange(int(seen_dataset_size / batch_size)):
 
-                    if not condition :
-                        # sample from the prior
-                        z_samples = torch.randn(batch_size, model.module.latent_dim).to(self.device)
-                    else:
-                        # sample from the class condition prior
-                        class_choice = np.random.choice(len(self.seen_tasks) - self.num_increment_tasks, batch_size)
-                        z_samples = torch.randn(batch_size, model.module.latent_dim).to(self.device)
-                        for b in range(batch_size):
-                            z_samples[b] = torch.normal(z_means[class_choice[b]],z_std[class_choice[b]])
+                    # sample from the class condition prior
+                    class_choice = np.random.choice(len(self.seen_tasks) - self.num_increment_tasks, batch_size)
+                    z_samples = torch.randn(batch_size, model.module.latent_dim).to(self.device)
+                    for b in range(batch_size):
+                        z_samples[b] = torch.normal(z_means[class_choice[b]],z_std[class_choice[b]])
 
                     # calculate probabilistic decoder, generate data points
                     gen = model.module.decode(z_samples)

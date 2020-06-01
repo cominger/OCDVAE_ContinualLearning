@@ -20,12 +20,11 @@ import torch.backends.cudnn as cudnn
 # Custom library
 import lib.Models.architectures as architectures
 from lib.Models.pixelcnn import PixelCNN
-# from lib.Models.gan import Gan_Model
 import lib.Datasets.datasets as datasets
 from lib.Models.initialization import WeightInit
 from lib.Models.architectures import grow_classifier
 from lib.cmdparser import parser
-from lib.Training.train import train, class_distribution
+from lib.Training.train import train
 from lib.Training.validate import validate
 from lib.Training.loss_functions import unified_loss_function as criterion
 from lib.Utility.utils import save_checkpoint, save_task_checkpoint
@@ -286,8 +285,7 @@ def main():
                                         openset_generative_replay=args.openset_generative_replay,
                                         openset_threshold=args.openset_generative_replay_threshold,
                                         openset_tailsize=args.openset_weibull_tailsize,
-                                        autoregression=args.autoregression,
-                                        condition = args.class_generative_replay)
+                                        autoregression=args.autoregression)
 
                 # grow the classifier and increment the variable for number of overall classes so we can use it later
                 if args.cross_dataset:
@@ -312,12 +310,10 @@ def main():
                 model.module.seen_tasks = dataset.seen_tasks
 
         # train
-        train(dataset, model, criterion, epoch, l1_weight, optimizer, writer, device, save_path, args)
-
-        mu, std = class_distribution(dataset, model, args, device)
+        train(dataset, model, criterion, epoch, optimizer, writer, device, save_path, args)
 
         # evaluate on validation set
-        prec, loss = validate(dataset, model, criterion, epoch, writer, device, save_path, args, mu, std)
+        prec, loss = validate(dataset, model, criterion, epoch, writer, device, save_path, args)
 
         # remember best prec@1 and save checkpoint
         is_best = loss < best_loss
