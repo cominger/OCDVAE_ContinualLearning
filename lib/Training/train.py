@@ -6,6 +6,7 @@ from lib.Utility.metrics import accuracy
 from lib.Utility.visualization import visualize_confusion
 from lib.Utility.visualization import visualize_image_grid
 import lib.OpenSet.meta_recognition as mr
+from .augmentation import blur_data
 
 def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path, args):
     """
@@ -31,6 +32,7 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
     batch_time = AverageMeter()
     data_time = AverageMeter()
     G_losses = AverageMeter()
+    gp_losses = AverageMeter()
     D_losses = AverageMeter()
     D_losses_real = AverageMeter()
     D_losses_fake = AverageMeter()
@@ -59,20 +61,61 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
             noise = torch.randn(inp.size()).to(device) * args.denoising_noise_value
             inp = inp + noise
 
+        if args.blur:
+            inp = blur_data(inp, args.patch_size, device)
+
         # measure data loading time
         data_time.update(time.time() - end)
 
         # Model explanation: Conventionally GAN architecutre update D first and G
+        #### D Update#### 
         class_samples, recon_samples, mu, std = model(inp)
         mu_label = None
         if args.proj_gan:
             # pred_label = torch.argmax(class_samples, dim=-1).squeeze()
             # mu_label = pred_label.to(device)
             mu_label = target
-         # mu_label = mu.detach()
+
+        real_z = model.module.forward_D(recon_target, mu_label)
+
+        D_loss_real = torch.mean(torch.nn.functional.relu(1. - real_z)) #hinge
+        # D_loss_real = - torch.mean(real_z)                                  #WGAN-GP
+        D_losses_real.update(D_loss_real.item(), 1)
+
+        n,b,c,x,y = recon_samples.shape
+        fake_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)).detach(), mu_label)
+
+        D_loss_fake = torch.mean(torch.nn.functional.relu(1. + fake_z)) #hinge
+        # D_loss_fake = torch.mean(fake_z)                                #WGAN-GP
+        D_losses_fake.update(D_loss_fake.item(), 1)
+
+        GAN_D_loss = (D_loss_real + D_loss_fake)  
+        D_losses.update(GAN_D_loss.item(), inp.size(0))
+
+        # Compute loss for gradient penalty
+        alpha = torch.rand(recon_target.size(0),1,1,1).to(device)
+        x_hat = (alpha * recon_target + (1-alpha) * recon_samples.view(n*b,c,x,y)).requires_grad_(True)
+        out_x_hat = model.module.forward_D(x_hat, mu_label)
+        D_loss_gp = model.module.discriminator.gradient_penalty(out_x_hat, x_hat)
+        gp_losses.update(D_loss_gp, inp.size(0))
+
+        GAN_D_loss += args.lambda_gp*D_loss_gp
+
+        # compute gradient and do SGD step
+        optimizer['enc'].zero_grad()
+        optimizer['dec'].zero_grad()
+        optimizer['disc'].zero_grad()
+        GAN_D_loss.backward()
+        optimizer['disc'].step()
 
         #### G Update####
         if i % 1 == 0:
+            class_samples, recon_samples, mu, std = model(inp)
+            mu_label = None
+            if args.proj_gan:
+                # pred_label = torch.argmax(class_samples, dim=-1).squeeze()
+                # mu_label = pred_label.to(device)
+                mu_label = target
 
             # OCDVAE calculate loss
             class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
@@ -94,7 +137,7 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
             n,b,c,x,y = recon_samples.shape
             fake_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label)
 
-            GAN_G_loss = torch.mean(fake_z)
+            GAN_G_loss = -torch.mean(fake_z)
             G_losses_fake.update(GAN_G_loss.item(), inp.size(0))
 
             GAN_G_loss = -args.var_gan_weight*torch.mean(fake_z)
@@ -108,29 +151,6 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
             GAN_G_loss.backward()
             optimizer['enc'].step()
             optimizer['dec'].step()
-        
-        #### D Update#### 
-        real_z = model.module.forward_D(recon_target, mu_label)
-
-        D_loss_real = torch.mean(torch.nn.functional.relu(1. - real_z))
-        D_losses_real.update(D_loss_real.item(), 1)
-
-        n,b,c,x,y = recon_samples.shape
-        fake_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)).detach(), mu_label)
-
-        D_loss_fake = torch.mean(torch.nn.functional.relu(1. + fake_z))
-        D_losses_fake.update(D_loss_fake.item(), 1)
-
-
-        GAN_D_loss = (D_loss_real + D_loss_fake)  
-        D_losses.update(GAN_D_loss.item(), inp.size(0))
-
-        # compute gradient and do SGD step
-        optimizer['enc'].zero_grad()
-        optimizer['dec'].zero_grad()
-        optimizer['disc'].zero_grad()
-        GAN_D_loss.backward()
-        optimizer['disc'].step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -180,4 +200,6 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
             if value.requires_grad and value.grad is not None:
                 writer.add_histogram(tag + '/grad', value.grad.data.cpu().numpy(), epoch, bins="auto")
 
-    print(' * Train: Loss {loss.avg:.5f} Prec@1 {top1.avg:.3f}'.format(loss=losses, top1=top1))
+    print(' * Train: Loss {loss.avg:.5f} Prec@1 {top1.avg:.3f}\t'
+          ' GAN: Generator {G_losses.avg:.5f} Discriminator {D_losses.avg:.4f}'
+        .format(loss=losses, top1=top1, G_losses=G_losses, D_losses=D_losses))

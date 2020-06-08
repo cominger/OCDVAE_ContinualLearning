@@ -17,8 +17,10 @@ parser.add_argument('-p', '--patch-size', default=28, type=int, help='patch size
 parser.add_argument('--gray-scale', default=False, type=bool, help='use gray scale images (default: False). '
                                                                    'If false, single channel images will be repeated '
                                                                    'to three channels.')
-parser.add_argument('-noise', '--denoising-noise-value', default=0.25, type=float,
+parser.add_argument('-noise', '--denoising-noise-value', default=0, type=float,
                     help='noise value for denoising. (float in range [0, 1]. Default: 0.25)')
+parser.add_argument('--blur', action = "store_true", help='turn on de-blurring')
+
 
 # Architecture and weight-init
 parser.add_argument('-a', '--architecture', default='WRN', help='model architecture (default: WRN)')
@@ -118,7 +120,7 @@ parser.add_argument('--num-gan-feature', default=64, type=int, help='number of t
 
 parser.add_argument('--var-gan-weight', default = 0.01, type = float)
 parser.add_argument('--l1-weight', default = 10, type = float)
-parser.add_argument('--lambda-gp', default = 0, type = int)
+parser.add_argument('--lambda-gp', default = 10, type = float)
 
 # add
 parser.add_argument('--FID', action = "store_true")

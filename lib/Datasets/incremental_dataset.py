@@ -483,12 +483,8 @@ def get_incremental_dataset(parent_class, args):
             if not openset or not openset_success:
                 print("Using generative model to replay old data")
                 for i in trange(int(seen_dataset_size / batch_size)):
-
                     # sample from the class condition prior
-                    class_choice = np.random.choice(len(self.seen_tasks) - self.num_increment_tasks, batch_size)
                     z_samples = torch.randn(batch_size, model.module.latent_dim).to(self.device)
-                    for b in range(batch_size):
-                        z_samples[b] = torch.normal(z_means[class_choice[b]],z_std[class_choice[b]])
 
                     # calculate probabilistic decoder, generate data points
                     gen = model.module.decode(z_samples)

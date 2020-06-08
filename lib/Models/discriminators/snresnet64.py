@@ -57,11 +57,11 @@ class SNResNetProjectionDiscriminator(nn.Module):
 
     def gradient_penalty(self, y, x):
         weight = torch.ones_like(y)
-        gradient = torch.autograd.grad(outputs=y, inputs=x, grad_outputs=weight, retain_graph=True, create_graph=True, only_inputs=True)[0]
-        gradient = gradient.view(gradient.size(0),-1)       
-        gradient = ((gradient.norm(2,1)-1) **2).mean()
+        dydx = torch.autograd.grad(outputs=y, inputs=x, grad_outputs=weight, retain_graph=True, create_graph=True, only_inputs=True)[0]
+        dydx = dydx.view(dydx.size(0),-1)       
+        dydx_l2norm = torch.sqrt(torch.sum(dydx**2,dim=1))
 
-        return gradient
+        return torch.mean((dydx_l2norm-1)**2)
 
 
 
