@@ -17,8 +17,10 @@ parser.add_argument('-p', '--patch-size', default=28, type=int, help='patch size
 parser.add_argument('--gray-scale', default=False, type=bool, help='use gray scale images (default: False). '
                                                                    'If false, single channel images will be repeated '
                                                                    'to three channels.')
-parser.add_argument('-noise', '--denoising-noise-value', default=0.25, type=float,
+parser.add_argument('-noise', '--denoising-noise-value', default=0, type=float,
                     help='noise value for denoising. (float in range [0, 1]. Default: 0.25)')
+parser.add_argument('--blur', action = "store_true", help='turn on de-blurring')
+
 
 # Architecture and weight-init
 parser.add_argument('-a', '--architecture', default='WRN', help='model architecture (default: WRN)')
@@ -72,6 +74,8 @@ parser.add_argument('--dataset-order', default='AudioMNIST, MNIST, FashionMNIST'
 
 parser.add_argument('-genreplay', '--generative-replay', default=False, type=bool,
                     help='Turn on generative replay for data from old tasks')
+parser.add_argument('-cgenreplay', '--class-generative-replay', default=False, type=bool,
+                    help='Turn on class condition generative replay for data from old tasks')
 
 # Open set arguments
 parser.add_argument('--openset-generative-replay', default=False, type=bool,
@@ -105,16 +109,27 @@ parser.add_argument('--pixel-cnn-kernel-size', default=7, type=int, help='PixelC
 # Debug
 parser.add_argument('--debug','-d',action = 'store_true', help = 'pdb enable')
 
-# No Recon
-parser.add_argument("--no-recon", action = 'store_true', help='no recon loss')
-
-# WGAN-GP
+# GAN related paramter
 parser.add_argument('--gan', action = 'store_true', help ='train generator as gan fashion')
+parser.add_argument('--proj-gan', action = 'store_true', help ='train generator as gan fashion')
+
+parser.add_argument('--gen-learning-rate', default = 1e-4, type=float, help ='train generator as gan fashion')
+parser.add_argument('--dis-learning-rate', default = 1e-3, type=float, help ='train discriminator as gan fashion')
+parser.add_argument('--num-dis-feature', default=128, type=int, help='number of total epochs to run')
+parser.add_argument('--num-gan-feature', default=64, type=int, help='number of total epochs to run')
+
+parser.add_argument('--var-gan-weight', default = 0.01, type = float)
+parser.add_argument('--l1-weight', default = 10, type = float)
+parser.add_argument('--lambda-gp', default = 10, type = float)
+
+# add
+parser.add_argument('--FID', action = "store_true")
+parser.add_argument('--FID-dims', default = 2048, type = int)
+
+# VAEgan
 parser.add_argument('--feature-wise-loss', action = "store_true")
-parser.add_argument('--gan-epochs', default=120, type=int, help='number of total epochs to run')
-parser.add_argument('-lrG', '--learning-rate-G', default=2e-4, type=float)
-parser.add_argument('-lrD', '--learning-rate-D', default=2e-4, type=float)
-parser.add_argument('-rg','--ratio-G', default=1, type=int)
-parser.add_argument('-rd','--ratio-D', default=2, type=int)
-parser.add_argument('--lambda-gp', default = 10, type =float, help ='penalty')
 parser.add_argument('--encoder-dist', action='store_true', help ='feature_distance loss')
+
+# encoder-level
+parser.add_argument('--no-init-model', action = "store_true")
+

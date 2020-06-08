@@ -31,9 +31,12 @@ def unified_loss_function(output_samples_classification, target, output_samples_
     if args.autoregression:
         recon_loss = nn.CrossEntropyLoss(reduction='sum')
     else:
-        recon_loss = nn.BCEWithLogitsLoss(reduction='sum')
+        # recon_loss = nn.BCEWithLogitsLoss(reduction='sum')
+        recon_loss = nn.L1Loss(reduction='sum')
+        # recon_loss = nn.L1Loss()
 
     class_loss = nn.CrossEntropyLoss(reduction='sum')
+    # class_loss = nn.CrossEntropyLoss()
 
     # Place-holders for the final loss values over all latent space samples
     recon_losses = torch.zeros(output_samples_recon.size(0)).to(device)

@@ -20,7 +20,6 @@ import torch.backends.cudnn as cudnn
 # Custom library
 import lib.Models.architectures as architectures
 from lib.Models.pixelcnn import PixelCNN
-from lib.Models.gan import Gan_Model
 import lib.Datasets.datasets as datasets
 from lib.Models.initialization import WeightInit
 from lib.Models.architectures import grow_classifier
@@ -36,7 +35,6 @@ from lib.Utility.visualization import visualize_dataset_in_2d_embedding
 
 # Comment this if CUDNN benchmarking is not desired
 cudnn.benchmark = True
-
 
 def main():
     # Command line options
@@ -62,6 +60,8 @@ def main():
     # add option specific naming to separate tensorboard log files later
     if args.autoregression:
         save_path += '_pixelcnn'
+    if args.gan:
+        save_path += 'gan'
 
     if args.incremental_data:
         save_path += '_incremental'
@@ -203,7 +203,6 @@ def main():
 
     # build the model
     model = net_init_method(device, num_classes, num_colors, args)
-    # model = net_init_method(device, 100, num_colors, args)
 
     # optionally add the autoregressive decoder
     if args.autoregression:
@@ -211,26 +210,28 @@ def main():
                                   num_layers=args.pixel_cnn_layers, k=args.pixel_cnn_kernel_size,
                                   padding=args.pixel_cnn_kernel_size//2)
 
+    # Initialize the weights of the model, by default according to He et al.
+    if not args.no_init_model:
+        print("Initializing network with: " + args.weight_init)
+        WeightInitializer = WeightInit(args.weight_init)
+        WeightInitializer.init_model(model)
+
+    # Define optimizer and loss function (criterion)
+    optimizer = {}
+    optimizer['enc'] = torch.optim.Adam(list(model.encoder.parameters()) + list(model.latent_mu.parameters()) + list(model.latent_std.parameters()) + list(model.classifier.parameters())
+                                        , lr=args.learning_rate, betas=(0.5, 0.9))
+    optimizer['dec'] = torch.optim.Adam(list(model.decoder.parameters()) + list(model.latent_decoder.parameters())
+                                        , lr=args.gen_learning_rate, betas=(0.5, 0.9))
+    optimizer['disc'] = torch.optim.Adam(list(model.discriminator.parameters()), lr=args.dis_learning_rate, betas=(0.5, 0.9))
+
     # Parallel container for multi GPU use and cast to available device
     model = torch.nn.DataParallel(model).to(device)
     print(model)
 
-    # Initialize the weights of the model, by default according to He et al.
-    print("Initializing network with: " + args.weight_init)
-    WeightInitializer = WeightInit(args.weight_init)
-    WeightInitializer.init_model(model)
-
-    # Define optimizer and loss function (criterion)
-    milestones_list = [100,150]
-    optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones_list, gamma=0.5)
-    # milestones_list = [100, 150, 200, 250]
-    # optimizer = torch.optim.SGD(model.parameters(), args.learning_rate, momentum=0.9, weight_decay=2e-4)
-    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones_list)
-
     epoch = 0
     best_prec = 0
     best_loss = random.getrandbits(128)
+    l1_weight = args.l1_weight
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -241,7 +242,9 @@ def main():
             best_prec = checkpoint['best_prec']
             best_loss = checkpoint['best_loss']
             model.load_state_dict(checkpoint['state_dict'])
-            optimizer.load_state_dict(checkpoint['optimizer'])
+            optimizer['enc'].load_state_dict(checkpoint['optimizer_enc'])
+            optimizer['dec'].load_state_dict(checkpoint['optimizer_dec'])
+            optimizer['disc'].load_state_dict(checkpoint['optimizer_disc'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
         else:
@@ -249,7 +252,7 @@ def main():
 
     # optimize until final amount of epochs is reached. Final amount of epochs is determined through the
     while epoch < (args.epochs * epoch_multiplier):
-        if epoch+2 == epoch%args.epochs:
+        if (epoch+2)%args.epochs == 0:
             print("debug perpose")
         # visualize the latent space before each task increment and at the end of training if it is 2-D
         if epoch % args.epochs == 0 and epoch > 0 or (epoch + 1) % (args.epochs * epoch_multiplier) == 0:
@@ -295,17 +298,19 @@ def main():
                     model.module.num_classes += args.num_increment_tasks
                     grow_classifier(device, model.module.classifier, args.num_increment_tasks, WeightInitializer)
 
-                # reset moving averages etc. of the optimizer
-                optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
-                scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=milestones_list+epoch, gamma=0.5)
-                # optimizer = torch.optim.SGD(model.parameters(), lr=args.learning_rate, momentum = 0.9, weight_decay = 0.00001)
+                # reset moving averages etc. of the optimizer 
+                model = model.module
+                optimizer['enc'] = torch.optim.Adam(list(model.encoder.parameters()) + list(model.latent_mu.parameters()) + list(model.latent_std.parameters()) + list(model.classifier.parameters())
+                                        , args.learning_rate)
+                # Parallel container for multi GPU use and cast to available device
+                model = torch.nn.DataParallel(model).to(device)
 
             # change the number of seen classes
             if epoch % args.epochs == 0:
                 model.module.seen_tasks = dataset.seen_tasks
 
         # train
-        train(dataset, model, criterion, epoch, optimizer, writer, device, args)
+        train(dataset, model, criterion, epoch, optimizer, writer, device, save_path, args)
 
         # evaluate on validation set
         prec, loss = validate(dataset, model, criterion, epoch, writer, device, save_path, args)
@@ -319,16 +324,19 @@ def main():
                          'state_dict': model.state_dict(),
                          'best_prec': best_prec,
                          'best_loss': best_loss,
-                         'optimizer': optimizer.state_dict()},
+                         'optimizer_enc': optimizer['enc'].state_dict(),
+                         'optimizer_dec': optimizer['dec'].state_dict(),
+                         'optimizer_disc': optimizer['disc'].state_dict(),
+                         },
                         is_best, save_path)
 
         # increment epoch counters
         epoch += 1
-        scheduler.step()
 
         # if a new task begins reset the best prec so that new best model can be stored.
         if args.incremental_data and epoch % args.epochs == 0:
             best_prec = 0
+            l1_weight = args.l1_weight
             best_loss = random.getrandbits(128)
 
     writer.close()
