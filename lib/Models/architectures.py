@@ -563,7 +563,6 @@ class WRN_gan(nn.Module):
                 ('encoder_block4', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[4],
                                                    WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
                 ('encoder_bn1', nn.BatchNorm2d(self.nChannels[4], eps=self.batch_norm)),
-                ('encoder_bn1', nn.BatchNorm2d(self.nChannels[4], eps=self.batch_norm)),
                 ('encoder_act1', nn.ReLU(inplace=True))
             ]))
 
@@ -582,13 +581,13 @@ class WRN_gan(nn.Module):
         if self.patch_size < 64:
             self.decoder = nn.Sequential(OrderedDict([
                 ('decoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[2],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
                 ('decoder_upsample1', nn.Upsample(scale_factor=2, mode='nearest')),
                 ('decoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[1],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
                 ('decoder_upsample2', nn.Upsample(scale_factor=2, mode='nearest')),
                 ('decoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[0],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
                 ('decoder_bn1', nn.BatchNorm2d(self.nChannels[0], eps=self.batch_norm)),
                 ('decoder_act1', nn.ReLU(inplace=True)),
                 ('decoder_conv1', nn.Conv2d(self.nChannels[0], self.out_channels, kernel_size=3, stride=1, padding=1,
@@ -597,16 +596,16 @@ class WRN_gan(nn.Module):
         else:
             self.decoder = nn.Sequential(OrderedDict([
                 ('decoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[4], self.nChannels[3],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
                 ('decoder_upsample1', nn.Upsample(scale_factor=2, mode='nearest')),
                 ('decoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[2],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
                 ('decoder_upsample2', nn.Upsample(scale_factor=2, mode='nearest')),
                 ('decoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[1],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
                 ('decoder_upsample3', nn.Upsample(scale_factor=2, mode='nearest')),
                 ('decoder_block4', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[0],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
                 ('decoder_bn1', nn.BatchNorm2d(self.nChannels[0], eps=self.batch_norm)),
                 ('decoder_act1', nn.ReLU(inplace=True)),
                 ('decoder_upsample4', nn.Upsample(scale_factor=2, mode='nearest')),

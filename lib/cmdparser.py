@@ -112,6 +112,7 @@ parser.add_argument('--debug','-d',action = 'store_true', help = 'pdb enable')
 # GAN related paramter
 parser.add_argument('--gan', action = 'store_true', help ='train generator as gan fashion')
 parser.add_argument('--proj-gan', action = 'store_true', help ='train generator as gan fashion')
+parser.add_argument('--wgan-gp', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
 
 parser.add_argument('--gen-learning-rate', default = 1e-4, type=float, help ='train generator as gan fashion')
 parser.add_argument('--dis-learning-rate', default = 1e-3, type=float, help ='train discriminator as gan fashion')

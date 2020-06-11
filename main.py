@@ -61,7 +61,10 @@ def main():
     if args.autoregression:
         save_path += '_pixelcnn'
     if args.gan:
-        save_path += 'gan'
+        if args.wgan_gp:
+            save_path += 'wgan-gp'
+        else:
+            save_path += 'gan'
 
     if args.incremental_data:
         save_path += '_incremental'

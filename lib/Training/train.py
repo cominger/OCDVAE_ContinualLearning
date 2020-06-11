@@ -77,29 +77,40 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
             mu_label = target
 
         real_z = model.module.forward_D(recon_target, mu_label)
-
         D_loss_real = torch.mean(torch.nn.functional.relu(1. - real_z)) #hinge
-        # D_loss_real = - torch.mean(real_z)                                  #WGAN-GP
-        D_losses_real.update(D_loss_real.item(), 1)
+        if args.wgan_gp:
+            D_loss_real = - torch.mean(real_z)                           #WGAN-GP
+        D_losses_real.update(D_loss_real.item(), inp.size(0))
 
         n,b,c,x,y = recon_samples.shape
-        fake_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)).detach(), mu_label)
+        recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)).detach(), mu_label)
+        fake_samples = model.module.generate()
+        fake_z = model.module.forward_D(fake_samples.detach(), mu_label)
 
-        D_loss_fake = torch.mean(torch.nn.functional.relu(1. + fake_z)) #hinge
-        # D_loss_fake = torch.mean(fake_z)                                #WGAN-GP
-        D_losses_fake.update(D_loss_fake.item(), 1)
+
+        D_loss_fake = torch.mean(torch.nn.functional.relu(1. + recon_z)) #hinge
+        D_loss_fake += torch.mean(torch.nn.functional.relu(1. + fake_z)) #hinge
+        D_loss_fake *= 0.5
+
+        if args.wgan_gp:
+            # D_loss_fake = (torch.mean(recon_z) + torch.mean(fake_z)) * 0.5    #WGAN-GP
+            D_loss_fake = torch.mean(fake_z)                                    #WGAN-GP
+
+        D_losses_fake.update(D_loss_fake.item(), inp.size(0))
 
         GAN_D_loss = (D_loss_real + D_loss_fake)  
+
+        if args.wgan_gp:
+            # Compute loss for gradient penalty
+            alpha = torch.rand(recon_target.size(0),1,1,1).to(device)
+            x_hat = (alpha * recon_target + (1-alpha) * recon_samples.view(n*b,c,x,y)).requires_grad_(True)
+            out_x_hat = model.module.forward_D(x_hat, mu_label)
+            D_loss_gp = model.module.discriminator.gradient_penalty(out_x_hat, x_hat)
+            gp_losses.update(D_loss_gp, inp.size(0))
+
+            GAN_D_loss += args.lambda_gp*D_loss_gp
+
         D_losses.update(GAN_D_loss.item(), inp.size(0))
-
-        # Compute loss for gradient penalty
-        alpha = torch.rand(recon_target.size(0),1,1,1).to(device)
-        x_hat = (alpha * recon_target + (1-alpha) * recon_samples.view(n*b,c,x,y)).requires_grad_(True)
-        out_x_hat = model.module.forward_D(x_hat, mu_label)
-        D_loss_gp = model.module.discriminator.gradient_penalty(out_x_hat, x_hat)
-        gp_losses.update(D_loss_gp, inp.size(0))
-
-        GAN_D_loss += args.lambda_gp*D_loss_gp
 
         # compute gradient and do SGD step
         optimizer['enc'].zero_grad()
@@ -109,7 +120,7 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         optimizer['disc'].step()
 
         #### G Update####
-        if i % 1 == 0:
+        if i % 5 == 0:
             class_samples, recon_samples, mu, std = model(inp)
             mu_label = None
             if args.proj_gan:
@@ -121,7 +132,8 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
             class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
                                                          device, args)
             # add the individual loss components together and weight the KL term.
-            loss = class_loss + args.l1_weight * recon_loss + args.var_beta * kld_loss
+            # loss = class_loss + args.l1_weight * recon_loss + args.var_beta * kld_loss
+            loss = class_loss + recon_loss + args.var_beta * kld_loss
 
             output = torch.mean(class_samples, dim=0)
             # record precision/accuracy and losses
@@ -132,24 +144,43 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
             class_losses.update(class_loss.item(), inp.size(0))
             recon_losses.update(recon_loss.item(), inp.size(0))
             kld_losses.update(kld_loss.item(), inp.size(0))
-     
-            # Needed to add GAN_criterion on KL
-            n,b,c,x,y = recon_samples.shape
-            fake_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label)
-
-            GAN_G_loss = -torch.mean(fake_z)
-            G_losses_fake.update(GAN_G_loss.item(), inp.size(0))
-
-            GAN_G_loss = -args.var_gan_weight*torch.mean(fake_z)
-            G_losses.update(GAN_G_loss.item(), inp.size(0))
-
-            GAN_G_loss += loss
 
             optimizer['enc'].zero_grad()
             optimizer['dec'].zero_grad()
             optimizer['disc'].zero_grad()
-            GAN_G_loss.backward()
+            loss.backward()
             optimizer['enc'].step()
+            # optimizer['dec'].step()
+     
+            # Needed to add GAN_criterion on KL
+            class_samples, recon_samples, mu, std = model(inp)
+            mu_label = None
+            if args.proj_gan:
+                # pred_label = torch.argmax(class_samples, dim=-1).squeeze()
+                # mu_label = pred_label.to(device)
+                mu_label = target
+
+            # OCDVAE calculate loss
+            class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
+                                                         device, args)
+            n,b,c,x,y = recon_samples.shape
+            real_z = model.module.forward_D((recon_samples.view(n*b,c,x,y).detach()), mu_label)
+            GAN_G_loss = args.l1_weight * recon_loss - args.var_gan_weight*torch.mean(real_z)
+
+            # fake_samples = model.module.generate()
+            # fake_z = model.module.forward_D(fake_samples.detach(), mu_label)
+
+            # GAN_G_loss = -torch.mean(fake_z)
+            G_losses_fake.update(GAN_G_loss.item(), inp.size(0))
+
+            # GAN_G_loss = -args.var_gan_weight*torch.mean(fake_z)
+            G_losses.update(GAN_G_loss.item(), inp.size(0))
+
+            # GAN_G_loss += loss
+            optimizer['enc'].zero_grad()
+            optimizer['dec'].zero_grad()
+            optimizer['disc'].zero_grad()
+            GAN_G_loss.backward()
             optimizer['dec'].step()
 
         # measure elapsed time
@@ -189,6 +220,7 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
     writer.add_scalar('training/train_D_loss_real', D_losses_real.avg, epoch)
     writer.add_scalar('training/train_D_loss_fake', D_losses_fake.avg, epoch)
     writer.add_scalar('training/train_G_loss_fake', G_losses_fake.avg, epoch)
+    writer.add_scalar('training/train_gp', gp_losses.avg, epoch)
 
     # If the log weights argument is specified also add parameter and gradient histograms to TensorBoard.
     if args.log_weights:
