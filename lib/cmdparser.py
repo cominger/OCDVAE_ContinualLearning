@@ -37,7 +37,7 @@ parser.add_argument('--wrn-embedding-size', type=int, default=48,
 # Training hyper-parameters
 parser.add_argument('--epochs', default=120, type=int, help='number of total epochs to run')
 parser.add_argument('-b', '--batch-size', default=128, type=int, help='mini-batch size (default: 128)')
-parser.add_argument('-lr', '--learning-rate', default=1e-3, type=float, help='initial learning rate (default: 1e-3)')
+parser.add_argument('-lr', '--learning-rate', default=1e-4, type=float, help='initial learning rate (default: 1e-3)')
 parser.add_argument('-bn', '--batch-norm', default=1e-5, type=float, help='batch normalization (default 1e-5)')
 parser.add_argument('-pf', '--print-freq', default=100, type=int, help='print frequency (default: 100)')
 parser.add_argument('-log', '--log-weights', default=False, type=bool,
@@ -50,6 +50,7 @@ parser.add_argument('--resume', default='', type=str, help='path to model to loa
 # Variational parameters
 parser.add_argument('--var-latent-dim', default=60, type=int, help='Dimensionality of latent space')
 parser.add_argument('--var-beta', default=0.1, type=float, help='weight term for KLD loss (default: 0.1)')
+parser.add_argument('--var-cls-beta', default=1, type=float, help='weight term for KLD loss (default: 0.1)')
 parser.add_argument('--var-samples', default=1, type=int,
                     help='number of samples for the expectation in variational training (default: 1)')
 parser.add_argument('--visualization-epoch', default=20, type=int, help='number of epochs after which generations/'
@@ -110,17 +111,21 @@ parser.add_argument('--pixel-cnn-kernel-size', default=7, type=int, help='PixelC
 parser.add_argument('--debug','-d',action = 'store_true', help = 'pdb enable')
 
 # GAN related paramter
+# parser.add_argument('--gan-loss', default='hinge-gan', help='gan loss type ex)higne-gan, wgan-gp, lsgan, vae-wgan')
 parser.add_argument('--gan', action = 'store_true', help ='train generator as gan fashion')
 parser.add_argument('--proj-gan', action = 'store_true', help ='train generator as gan fashion')
 parser.add_argument('--wgan-gp', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
+parser.add_argument('--vae-wgan-gp', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
+parser.add_argument('--lsgan', action = 'store_true', help ='Chnage Gan loss from hinge to lsgan')
 
 parser.add_argument('--gen-learning-rate', default = 1e-4, type=float, help ='train generator as gan fashion')
-parser.add_argument('--dis-learning-rate', default = 1e-3, type=float, help ='train discriminator as gan fashion')
+parser.add_argument('--dis-learning-rate', default = 1e-4, type=float, help ='train discriminator as gan fashion')
 parser.add_argument('--num-dis-feature', default=128, type=int, help='number of total epochs to run')
 parser.add_argument('--num-gan-feature', default=64, type=int, help='number of total epochs to run')
 
-parser.add_argument('--var-gan-weight', default = 0.01, type = float)
-parser.add_argument('--l1-weight', default = 10, type = float)
+parser.add_argument('--var-gan-weight', default = 1, type = float)
+parser.add_argument('--l1-weight', default = 1, type = float)
+parser.add_argument('--perception-weight', default = 0, type = float)
 parser.add_argument('--lambda-gp', default = 10, type = float)
 
 # add

@@ -24,7 +24,7 @@ import lib.Datasets.datasets as datasets
 from lib.Models.initialization import WeightInit
 from lib.Models.architectures import grow_classifier
 from lib.cmdparser import parser
-from lib.Training.train import train
+# from lib.Training.train_lsgan import train
 from lib.Training.validate import validate
 from lib.Training.loss_functions import unified_loss_function as criterion
 from lib.Utility.utils import save_checkpoint, save_task_checkpoint
@@ -62,9 +62,17 @@ def main():
         save_path += '_pixelcnn'
     if args.gan:
         if args.wgan_gp:
+            from lib.Training.train_wgan_gp import train
             save_path += 'wgan-gp'
+        elif args.vae_wgan_gp:
+            from lib.Training.train_vae_wgan_gp import train
+            save_path += 'vae-wgan-gp'
+        elif args.lsgan:
+            from lib.Training.train_lsgan import train
+            save_path += 'lsgan'
         else:
-            save_path += 'gan'
+            from lib.Training.train_hinge import train
+            save_path += 'hige-gan'
 
     if args.incremental_data:
         save_path += '_incremental'

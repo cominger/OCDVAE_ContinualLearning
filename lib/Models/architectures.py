@@ -658,8 +658,10 @@ class WRN_gan(nn.Module):
         x = torch.tanh(x)
         return x
 
-    def generate(self):
-        z = torch.randn(self.batch_size, self.latent_dim).to(self.device)
+    def generate(self, batch_size=None):
+        if batch_size is None:
+            batch_size = self.batch_size
+        z = torch.randn(batch_size, self.latent_dim).to(self.device)
         x = self.decode(z)
         return x
 
@@ -673,6 +675,14 @@ class WRN_gan(nn.Module):
             output_samples[i] = self.decode(z)
             classification_samples[i] = self.classifier(z)
         return classification_samples, output_samples, z_mean, z_std
+
+    def forward_E(self, x):
+        z_mean, z_std = self.encode(x)
+        classification_samples = torch.zeros(self.num_samples, x.size(0), self.num_classes).to(self.device)
+        for i in range(self.num_samples):
+            z = self.reparameterize(z_mean, z_std)
+            classification_samples[i] = self.classifier(z)
+        return classification_samples, z_mean, z_std
 
     def forward_D(self, x, y=None):
         x = self.discriminator(x, y)
@@ -869,8 +879,10 @@ class CIFAR_ResNet(nn.Module):
         x = self.decoder(z)
         return x
 
-    def generate(self):
-        z = torch.randn(self.batch_size, self.latent_dim).to(self.device)
+    def generate(self, batch_size=None):
+        if batch_size is None:
+            batch_size = self.batch_size
+        z = torch.randn(batch_size, self.latent_dim).to(self.device)
         x = self.decode(z)
         # x = torch.Tanh(x)
         # x = torch.sigmoid(x)

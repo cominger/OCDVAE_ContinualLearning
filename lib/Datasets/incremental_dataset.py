@@ -110,16 +110,19 @@ def get_incremental_dataset(parent_class, args):
                 transforms.ToPILImage(mode = "RGB"),
                 # transforms.Resize(size = (re_patch_size,re_patch_size)),
                 # transforms.RandomCrop(size=(patch_size,patch_size)),
-                transforms.Resize(patch_size),
                 transforms.RandomHorizontalFlip(),
+                transforms.Resize(patch_size),
                 transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5, 0.5, 0.5)),
             ])
 
             val_transforms = transforms.Compose([
                 transforms.ToPILImage(mode = "RGB"),
-                transforms.Resize(size = (re_patch_size,re_patch_size)),
-                transforms.CenterCrop(size=(patch_size,patch_size)),
+                # transforms.Resize(size = (re_patch_size,re_patch_size)),
+                # transforms.CenterCrop(size=(patch_size,patch_size)),
+                transforms.Resize(patch_size),
                 transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5, 0.5, 0.5)),
             ])
 
             return train_transforms, val_transforms
@@ -464,11 +467,11 @@ def get_incremental_dataset(parent_class, args):
                         viz_subset = data[subset_idx]
 
                         imgs = torchvision.utils.make_grid(viz_subset, nrow=int(math.sqrt(self.vis_size)),
-                                                           padding=5)
+                                                           padding=5, normalize=True)
                         torchvision.utils.save_image(viz_subset, os.path.join(save_path, 'samples_seen_tasks_' +
                                                                               str(len(self.seen_tasks) -
                                                                                   self.num_increment_tasks) + '.png'),
-                                                     nrow=int(math.sqrt(self.vis_size)), padding=5)
+                                                     nrow=int(math.sqrt(self.vis_size)), padding=5, normalize=True)
                         writer.add_image('openset_generation_snapshot', imgs, len(self.seen_tasks) -
                                          self.num_increment_tasks)
 
@@ -508,11 +511,11 @@ def get_incremental_dataset(parent_class, args):
                 subset_idx = sd_idx[torch.floor(torch.arange(0, data.size(0), data.size(0) / self.vis_size)).long()]
                 viz_subset = data[subset_idx]
 
-                imgs = torchvision.utils.make_grid(viz_subset, nrow=int(math.sqrt(self.vis_size)), padding=5)
+                imgs = torchvision.utils.make_grid(viz_subset, nrow=int(math.sqrt(self.vis_size)), padding=5, normalize=True)
                 torchvision.utils.save_image(viz_subset, os.path.join(save_path, 'samples_seen_tasks_' +
                                                                       str(len(self.seen_tasks) -
                                                                           self.num_increment_tasks) + '.png'),
-                                             nrow=int(math.sqrt(self.vis_size)), padding=5)
+                                             nrow=int(math.sqrt(self.vis_size)), padding=5, normalize=True)
                 writer.add_image('dataset_generation_snapshot', imgs, len(self.seen_tasks) - self.num_increment_tasks)
 
             # return generated trainset

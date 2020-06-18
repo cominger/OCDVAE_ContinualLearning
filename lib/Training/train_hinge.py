@@ -31,13 +31,14 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
     losses = AverageMeter()
     batch_time = AverageMeter()
     data_time = AverageMeter()
+
     G_losses = AverageMeter()
-    gp_losses = AverageMeter()
+    G_losses_enc = AverageMeter()
+    G_losses_fake = AverageMeter()
+
     D_losses = AverageMeter()
     D_losses_real = AverageMeter()
     D_losses_fake = AverageMeter()
-    G_losses_fake = AverageMeter()
-    fake_class_losses = AverageMeter()
 
     top1 = AverageMeter()
 
@@ -71,15 +72,9 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         #### D Update#### 
         class_samples, recon_samples, mu, std = model(inp)
         mu_label = None
-        if args.proj_gan:
-            # pred_label = torch.argmax(class_samples, dim=-1).squeeze()
-            # mu_label = pred_label.to(device)
-            mu_label = target
 
         real_z = model.module.forward_D(recon_target, mu_label)
         D_loss_real = torch.mean(torch.nn.functional.relu(1. - real_z)) #hinge
-        if args.wgan_gp:
-            D_loss_real = - torch.mean(real_z)                           #WGAN-GP
         D_losses_real.update(D_loss_real.item(), inp.size(0))
 
         n,b,c,x,y = recon_samples.shape
@@ -87,28 +82,12 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         fake_samples = model.module.generate(recon_target.size(0))
         fake_z = model.module.forward_D(fake_samples.detach(), mu_label)
 
-
         D_loss_fake = torch.mean(torch.nn.functional.relu(1. + recon_z)) #hinge
         D_loss_fake += torch.mean(torch.nn.functional.relu(1. + fake_z)) #hinge
         D_loss_fake *= 0.5
 
-        if args.wgan_gp:
-            # D_loss_fake = (torch.mean(recon_z) + torch.mean(fake_z)) * 0.5    #WGAN-GP
-            D_loss_fake = torch.mean(fake_z)                                    #WGAN-GP
-
         D_losses_fake.update(D_loss_fake.item(), inp.size(0))
-
         GAN_D_loss = (D_loss_real + D_loss_fake)  
-
-        if args.wgan_gp:
-            # Compute loss for gradient penalty
-            alpha = torch.rand(recon_target.size(0),1,1,1).to(device)
-            x_hat = (alpha * recon_target + (1-alpha) * fake_samples).requires_grad_(True)
-            out_x_hat = model.module.forward_D(x_hat, mu_label)
-            D_loss_gp = model.module.discriminator.gradient_penalty(out_x_hat, x_hat)
-            gp_losses.update(D_loss_gp, inp.size(0))
-
-            GAN_D_loss += args.lambda_gp*D_loss_gp
 
         D_losses.update(GAN_D_loss.item(), inp.size(0))
 
@@ -123,64 +102,55 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         if i % 1 == 0:
             class_samples, recon_samples, mu, std = model(inp)
             mu_label = None
-            if args.proj_gan:
-                # pred_label = torch.argmax(class_samples, dim=-1).squeeze()
-                # mu_label = pred_label.to(device)
-                mu_label = target
 
             # OCDVAE calculate loss
             class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
                                                          device, args)
             # add the individual loss components together and weight the KL term.
             # loss = class_loss + args.l1_weight * recon_loss + args.var_beta * kld_loss
-            loss = class_loss + recon_loss + args.var_beta * kld_loss
 
             output = torch.mean(class_samples, dim=0)
             # record precision/accuracy and losses
             prec1 = accuracy(output, target)[0]
             top1.update(prec1.item(), inp.size(0))
             
-            losses.update(loss.item(), inp.size(0))
             class_losses.update(class_loss.item(), inp.size(0))
             recon_losses.update(recon_loss.item(), inp.size(0))
             kld_losses.update(kld_loss.item(), inp.size(0))
 
+            n,b,c,x,y = recon_samples.shape
+            recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label)
+
+            GAN_G_loss = - torch.mean(recon_z)
+            G_losses_fake.update(GAN_G_loss.item(), inp.size(0))
+
+            #Perception Loss
+            if args.perception_weight > 0:
+                with torch.no_grad():
+                    real_mu, real_std = model.module.encode(recon_target)
+                recon_mu,recon_std = model.module.encode((recon_samples.view(n*b,c,x,y)).detach())
+                GAN_Enc_loss = torch.nn.L1Loss()(recon_mu, real_mu)
+            else:
+                GAN_Enc_loss = torch.tensor(0)
+
+            G_losses_enc.update(GAN_Enc_loss.item(), inp.size(0))
+            G_loss = args.var_gan_weight * GAN_G_loss + \
+                    args.perception_weight * GAN_Enc_loss
+
+            G_losses.update(G_loss.item(), inp.size(0))
+
+            loss = args.var_cls_beta * class_loss + \
+                    args.l1_weight * recon_loss + \
+                    args.var_beta * kld_loss + \
+                    args.var_gan_weight * GAN_G_loss + \
+                    args.perception_weight * GAN_Enc_loss
+
+            losses.update(loss.item(), inp.size(0))
             optimizer['enc'].zero_grad()
             optimizer['dec'].zero_grad()
             optimizer['disc'].zero_grad()
             loss.backward()
             optimizer['enc'].step()
-            # optimizer['dec'].step()
-     
-            # Needed to add GAN_criterion on KL
-            class_samples, recon_samples, mu, std = model(inp)
-            mu_label = None
-            if args.proj_gan:
-                # pred_label = torch.argmax(class_samples, dim=-1).squeeze()
-                # mu_label = pred_label.to(device)
-                mu_label = target
-
-            # OCDVAE calculate loss
-            class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
-                                                         device, args)
-            n,b,c,x,y = recon_samples.shape
-            real_z = model.module.forward_D((recon_samples.view(n*b,c,x,y).detach()), mu_label)
-            recon_mu,recon_std = model.module.encode((recon_samples.view(n*b,c,x,y).detach()))
-            real_mu, real_std = model.module.encode(recon_target.detach())
-
-            GAN_G_loss = args.l1_weight * recon_loss - args.var_gan_weight*torch.mean(real_z)
-            # GAN_G_loss = -torch.mean(fake_z)
-            G_losses_fake.update(GAN_G_loss.item(), inp.size(0))
-            GAN_G_loss += torch.nn.L1Loss()(recon_mu, real_mu)
-
-            # GAN_G_loss = -args.var_gan_weight*torch.mean(fake_z)
-            G_losses.update(GAN_G_loss.item(), inp.size(0))
-
-            # GAN_G_loss += loss
-            optimizer['enc'].zero_grad()
-            optimizer['dec'].zero_grad()
-            optimizer['disc'].zero_grad()
-            GAN_G_loss.backward()
             optimizer['dec'].step()
 
         # measure elapsed time
@@ -220,7 +190,6 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
     writer.add_scalar('training/train_D_loss_real', D_losses_real.avg, epoch)
     writer.add_scalar('training/train_D_loss_fake', D_losses_fake.avg, epoch)
     writer.add_scalar('training/train_G_loss_fake', G_losses_fake.avg, epoch)
-    writer.add_scalar('training/train_gp', gp_losses.avg, epoch)
 
     # If the log weights argument is specified also add parameter and gradient histograms to TensorBoard.
     if args.log_weights:
