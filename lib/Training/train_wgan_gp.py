@@ -8,7 +8,7 @@ from lib.Utility.visualization import visualize_image_grid
 import lib.OpenSet.meta_recognition as mr
 from .augmentation import blur_data
 
-def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path, args):
+def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimizer_disc, writer, device, save_path, args):
     """
     Trains/updates the model for one epoch on the training dataset.
 
@@ -59,24 +59,20 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
 
         # this needs to be below the line where the reconstruction target is set
         # sample and add noise to the input (but not to the target!).
-        if args.denoising_noise_value > 0.0:
-            noise = torch.randn(inp.size()).to(device) * args.denoising_noise_value
-            inp = inp + noise
+        # if args.denoising_noise_value > 0.0:
+        #     noise = torch.randn(inp.size()).to(device) * args.denoising_noise_value
+        #     inp = inp + noise
 
-        if args.blur:
-            inp = blur_data(inp, args.patch_size, device)
+        # if args.blur:
+        #     inp = blur_data(inp, args.patch_size, device)
 
         # measure data loading time
         data_time.update(time.time() - end)
 
         # Model explanation: Conventionally GAN architecutre update D first and G
         #### D Update#### 
-        class_samples, recon_samples, mu, std = model(inp)
+        # class_samples, recon_samples, mu, std = model(inp)
         mu_label = None
-        if args.proj_gan:
-            # pred_label = torch.argmax(class_samples, dim=-1).squeeze()
-            # mu_label = pred_label.to(device)
-            mu_label = target
 
         # update Real image
         real_z = model.module.forward_D(recon_target, mu_label)
@@ -84,46 +80,44 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         D_losses_real.update(D_loss_real.item(), inp.size(0))
 
         # update Recon Image
+        class_samples, recon_samples, mu, std = model(inp)
         n,b,c,x,y = recon_samples.shape
         recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)).detach(), mu_label)
-        fake_samples = model.module.generate(recon_target.size(0))
-        fake_z = model.module.forward_D(fake_samples.detach(), mu_label)
+        # fake_samples = model.module.generate(recon_target.size(0))
+        # fake_z = model.module.forward_D(fake_samples.detach(), mu_label)
 
-        D_loss_fake = (torch.mean(recon_z) + torch.mean(fake_z)) * 0.5    #WGAN-GP
-        # D_loss_fake = torch.mean(recon_z)                                   #WGAN-GP
+        # D_loss_fake = (torch.mean(recon_z) + torch.mean(fake_z)) * 0.5    #WGAN-GP
+        D_loss_fake = torch.mean(recon_z)                                   #WGAN-GP
         # D_loss_fake = torch.mean(fake_z)                                    #WGAN-GP
 
         D_losses_fake.update(D_loss_fake.item(), inp.size(0))
 
-        GAN_D_loss = (D_loss_real + D_loss_fake)  
+        # GAN_D_loss = (D_loss_real + D_loss_fake)  
 
         # Compute loss for gradient penalty
         alpha = torch.rand(recon_target.size(0),1,1,1).to(device)
-        x_hat = (alpha * recon_target.data + (1-alpha) * fake_samples.data).requires_grad_(True)
-        # x_hat = (alpha * recon_target + (1-alpha) * recon_samples.view(n*b,c,x,y)).requires_grad_(True)
+        # x_hat = (alpha * recon_target.data + (1-alpha) * fake_samples.data).requires_grad_(True)
+        x_hat = (alpha * recon_target + (1-alpha) * recon_samples.view(n*b,c,x,y)).requires_grad_(True)
         out_x_hat = model.module.forward_D(x_hat, mu_label)
         D_loss_gp = model.module.discriminator.gradient_penalty(out_x_hat, x_hat)
         D_gp_losses.update(D_loss_gp, inp.size(0))
 
-        GAN_D_loss += args.lambda_gp*D_loss_gp
+        GAN_D_loss = D_loss_real + D_loss_fake + args.lambda_gp*D_loss_gp
 
         D_losses.update(GAN_D_loss.item(), inp.size(0))
 
         # compute gradient and do SGD step
-        optimizer['enc'].zero_grad()
-        optimizer['dec'].zero_grad()
-        optimizer['disc'].zero_grad()
+        optimizer_enc.zero_grad()
+        optimizer_dec.zero_grad()
+        optimizer_disc.zero_grad()
+
         GAN_D_loss.backward()
-        optimizer['disc'].step()
+        optimizer_disc.step()
 
         #### G Update####
         if i % 1 == 0:
             class_samples, recon_samples, mu, std = model(inp)
             mu_label = None
-            if args.proj_gan:
-                # pred_label = torch.argmax(class_samples, dim=-1).squeeze()
-                # mu_label = pred_label.to(device)
-                mu_label = target
 
             # OCDVAE calculate loss
             class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
@@ -139,9 +133,14 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
      
             n,b,c,x,y = recon_samples.shape
             recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label)
-
             GAN_G_loss = - torch.mean(recon_z)
             G_losses_fake.update(GAN_G_loss.item(), inp.size(0))
+
+            # fake_samples = model.module.generate(recon_target.size(0))
+            # fake_z = model.module.forward_D(fake_samples, mu_label)
+
+            # GAN_G_loss = - torch.mean(fake_z)
+            # G_losses_fake.update(GAN_G_loss.item(), inp.size(0))
 
             #Perception Loss
             if args.perception_weight > 0:
@@ -164,16 +163,16 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
             loss = args.var_cls_beta * class_loss + \
                     args.l1_weight * recon_loss + \
                     args.var_beta * kld_loss + \
-                    args.var_gan_weight * GAN_G_loss + \
-                    args.perception_weight * GAN_Enc_loss
+                    args.var_gan_weight * GAN_G_loss #+ \
+                    # args.perception_weight * GAN_Enc_loss
             losses.update(loss.item(), inp.size(0))
 
-            optimizer['enc'].zero_grad()
-            optimizer['dec'].zero_grad()
-            optimizer['disc'].zero_grad()
+            optimizer_enc.zero_grad()
+            optimizer_dec.zero_grad()
+            optimizer_disc.zero_grad()
             loss.backward()
-            optimizer['enc'].step()
-            optimizer['dec'].step()
+            optimizer_dec.step()
+            optimizer_enc.step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)

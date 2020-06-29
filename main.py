@@ -61,18 +61,30 @@ def main():
     if args.autoregression:
         save_path += '_pixelcnn'
     if args.gan:
-        if args.wgan_gp:
+        # GAN based update
+        if args.gan_loss == 'wgan-gp':
             from lib.Training.train_wgan_gp import train
-            save_path += 'wgan-gp'
-        elif args.vae_wgan_gp:
-            from lib.Training.train_vae_wgan_gp import train
-            save_path += 'vae-wgan-gp'
-        elif args.lsgan:
+        elif args.gan_loss == 'lsgan':
             from lib.Training.train_lsgan import train
-            save_path += 'lsgan'
-        else:
+        elif args.gan_loss == 'hinge-gan':
             from lib.Training.train_hinge import train
-            save_path += 'hige-gan'
+
+        #VAE_gan based update
+        elif args.gan_loss == "vae-wgan-gp":
+            from lib.Training.train_vae_wgan_gp import train
+        elif args.gan_loss == "vae-hinge":
+            from lib.Training.train_vae_hinge import train
+
+        # DGR
+        elif args.gan_loss == "dgr-lsgan":
+            from lib.Training.train_dgr_lsgan import train
+        else:
+            from lib.Training.train_dgr import train
+
+        save_path += args.gan_loss
+    if args.introvae:
+        from lib.Training.train_intro_vae import train
+        save_path += 'introvae'
 
     if args.incremental_data:
         save_path += '_incremental'
@@ -227,13 +239,20 @@ def main():
         WeightInitializer = WeightInit(args.weight_init)
         WeightInitializer.init_model(model)
 
+    # assert total_temp == temp
+    # for name, param in model.named_parameters():
+    #     if not param.requires_grad:
+    #         print(name)
+
     # Define optimizer and loss function (criterion)
-    optimizer = {}
-    optimizer['enc'] = torch.optim.Adam(list(model.encoder.parameters()) + list(model.latent_mu.parameters()) + list(model.latent_std.parameters()) + list(model.classifier.parameters())
-                                        , lr=args.learning_rate, betas=(0.5, 0.9))
-    optimizer['dec'] = torch.optim.Adam(list(model.decoder.parameters()) + list(model.latent_decoder.parameters())
-                                        , lr=args.gen_learning_rate, betas=(0.5, 0.9))
-    optimizer['disc'] = torch.optim.Adam(list(model.discriminator.parameters()), lr=args.dis_learning_rate, betas=(0.5, 0.9))
+    encoder_param = list(model.encoder.parameters()) + list(model.latent_mu.parameters()) \
+     + list(model.latent_std.parameters()) + list(model.classifier.parameters())
+    gen_param = list(model.latent_decoder.parameters()) + list(model.decoder.parameters())
+    disc_param = list(model.discriminator.parameters())
+    optimizer_enc = torch.optim.Adam(encoder_param, lr=args.learning_rate, betas=(0.5, 0.999))
+    optimizer_dec = torch.optim.Adam(gen_param, lr=args.learning_rate, betas=(0.5, 0.999))
+    optimizer_disc = torch.optim.Adam(disc_param, lr=args.learning_rate, betas=(0.5, 0.999))
+    optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
 
     # Parallel container for multi GPU use and cast to available device
     model = torch.nn.DataParallel(model).to(device)
@@ -253,9 +272,9 @@ def main():
             best_prec = checkpoint['best_prec']
             best_loss = checkpoint['best_loss']
             model.load_state_dict(checkpoint['state_dict'])
-            optimizer['enc'].load_state_dict(checkpoint['optimizer_enc'])
-            optimizer['dec'].load_state_dict(checkpoint['optimizer_dec'])
-            optimizer['disc'].load_state_dict(checkpoint['optimizer_disc'])
+            optimizer_enc.load_state_dict(checkpoint['optimizer_enc'])
+            optimizer_dec.load_state_dict(checkpoint['optimizer_dec'])
+            optimizer_disc.load_state_dict(checkpoint['optimizer_disc'])
             print("=> loaded checkpoint '{}' (epoch {})"
                   .format(args.resume, checkpoint['epoch']))
         else:
@@ -310,18 +329,19 @@ def main():
                     grow_classifier(device, model.module.classifier, args.num_increment_tasks, WeightInitializer)
 
                 # reset moving averages etc. of the optimizer 
-                model = model.module
-                optimizer['enc'] = torch.optim.Adam(list(model.encoder.parameters()) + list(model.latent_mu.parameters()) + list(model.latent_std.parameters()) + list(model.classifier.parameters())
-                                        , args.learning_rate)
-                # Parallel container for multi GPU use and cast to available device
-                model = torch.nn.DataParallel(model).to(device)
+                optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
+                # model = model.module
+                # optimizer_enc = torch.optim.Adam(list(model.encoder.parameters()) + list(model.latent_mu.parameters()) + list(model.latent_std.parameters()) + list(model.classifier.parameters())
+                #                         , args.learning_rate)
+                # # Parallel container for multi GPU use and cast to available device
+                # model = torch.nn.DataParallel(model).to(device)
 
             # change the number of seen classes
             if epoch % args.epochs == 0:
                 model.module.seen_tasks = dataset.seen_tasks
 
         # train
-        train(dataset, model, criterion, epoch, optimizer, writer, device, save_path, args)
+        train(dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimizer_disc, writer, device, save_path, args)
 
         # evaluate on validation set
         prec, loss = validate(dataset, model, criterion, epoch, writer, device, save_path, args)
@@ -335,9 +355,9 @@ def main():
                          'state_dict': model.state_dict(),
                          'best_prec': best_prec,
                          'best_loss': best_loss,
-                         'optimizer_enc': optimizer['enc'].state_dict(),
-                         'optimizer_dec': optimizer['dec'].state_dict(),
-                         'optimizer_disc': optimizer['disc'].state_dict(),
+                         'optimizer_enc': optimizer_enc.state_dict(),
+                         'optimizer_dec': optimizer_dec.state_dict(),
+                         'optimizer_disc': optimizer_disc.state_dict(),
                          },
                         is_best, save_path)
 

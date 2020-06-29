@@ -111,16 +111,19 @@ parser.add_argument('--pixel-cnn-kernel-size', default=7, type=int, help='PixelC
 parser.add_argument('--debug','-d',action = 'store_true', help = 'pdb enable')
 
 # GAN related paramter
-# parser.add_argument('--gan-loss', default='hinge-gan', help='gan loss type ex)higne-gan, wgan-gp, lsgan, vae-wgan')
 parser.add_argument('--gan', action = 'store_true', help ='train generator as gan fashion')
-parser.add_argument('--proj-gan', action = 'store_true', help ='train generator as gan fashion')
-parser.add_argument('--wgan-gp', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
-parser.add_argument('--vae-wgan-gp', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
-parser.add_argument('--lsgan', action = 'store_true', help ='Chnage Gan loss from hinge to lsgan')
+parser.add_argument('--gan-loss', default='hinge-gan', help='gan loss type \
+                                                            ex) gan: higne-gan, wgan-gp, lsgan, \
+                                                                vae-gan: vae-hing_gan, vae-wgan-gp')
+# parser.add_argument('--proj-gan', action = 'store_true', help ='train generator as gan fashion')
+# parser.add_argument('--wgan-gp', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
+# parser.add_argument('--vae-wgan-gp', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
+# parser.add_argument('--lsgan', action = 'store_true', help ='Chnage Gan loss from hinge to lsgan')
+# parser.add_argument('--vae-hinge-gan', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
 
 parser.add_argument('--gen-learning-rate', default = 1e-4, type=float, help ='train generator as gan fashion')
 parser.add_argument('--dis-learning-rate', default = 1e-4, type=float, help ='train discriminator as gan fashion')
-parser.add_argument('--num-dis-feature', default=128, type=int, help='number of total epochs to run')
+parser.add_argument('--num-dis-feature', default=64, type=int, help='number of total epochs to run')
 parser.add_argument('--num-gan-feature', default=64, type=int, help='number of total epochs to run')
 
 parser.add_argument('--var-gan-weight', default = 1, type = float)
@@ -138,4 +141,9 @@ parser.add_argument('--encoder-dist', action='store_true', help ='feature_distan
 
 # encoder-level
 parser.add_argument('--no-init-model', action = "store_true")
+
+#introvae
+parser.add_argument('--introvae', action = "store_true")
+parser.add_argument('--extra-z-samples', action = "store_true")
+
 

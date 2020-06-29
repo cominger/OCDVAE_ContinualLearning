@@ -58,24 +58,19 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
 
         # this needs to be below the line where the reconstruction target is set
         # sample and add noise to the input (but not to the target!).
-        if args.denoising_noise_value > 0.0:
-            noise = torch.randn(inp.size()).to(device) * args.denoising_noise_value
-            inp = inp + noise
+        # if args.denoising_noise_value > 0.0:
+        #     noise = torch.randn(inp.size()).to(device) * args.denoising_noise_value
+        #     inp = inp + noise
 
-        if args.blur:
-            inp = blur_data(inp, args.patch_size, device)
+        # if args.blur:
+        #     inp = blur_data(inp, args.patch_size, device)
 
         # measure data loading time
         data_time.update(time.time() - end)
 
         # Model explanation: Conventionally GAN architecutre update D first and G
         #### D Update#### 
-        class_samples, recon_samples, mu, std = model(inp)
         mu_label = None
-        if args.proj_gan:
-            # pred_label = torch.argmax(class_samples, dim=-1).squeeze()
-            # mu_label = pred_label.to(device)
-            mu_label = target
 
         # update Real image
         real_z = model.module.forward_D(recon_target, mu_label)
@@ -83,6 +78,7 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         D_losses_real.update(D_loss_real.item(), inp.size(0))
 
         # update Recon Image
+        class_samples, recon_samples, mu, std = model(inp)
         n,b,c,x,y = recon_samples.shape
         recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)).detach(), mu_label)
         # fake_samples = model.module.generate(recon_target.size(0))

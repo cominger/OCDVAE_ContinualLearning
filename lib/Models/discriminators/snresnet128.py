@@ -16,18 +16,18 @@ class SNResNetProjectionDiscriminator(nn.Module):
         self.num_classes = num_classes
         self.activation = activation
 
-        self.block1 = OptimizedBlock(3, num_features)
+        self.block1 = OptimizedBlock(3, num_features)   # 64
         self.block2 = Block(num_features, num_features * 2,
-                            activation=activation, downsample=True)
-        self.block3 = Block(num_features * 2, num_features * 4,
-                            activation=activation, downsample=True)
+                            activation=activation, downsample=True) # 32
+        self.block3 = Block(num_features * 2, num_features * 4, 
+                            activation=activation, downsample=True) # 16
         self.block4 = Block(num_features * 4, num_features * 8,
-                            activation=activation, downsample=True)
+                            activation=activation, downsample=True) # 8
         self.block5 = Block(num_features * 8, num_features * 16,
-                            activation=activation, downsample=True)
+                            activation=activation, downsample=True) # 4
         self.block6 = Block(num_features * 16, num_features * 16,
-                            activation=activation, downsample=True)
-        self.l7 = utils.spectral_norm(nn.Linear(num_features * 16, 1))
+                            activation=activation, downsample=True) # 2
+        self.l7 = utils.spectral_norm(nn.Linear(num_features * 16*2*2, 1))
         if num_classes > 0:
             self.l_y = utils.spectral_norm(
                 nn.Embedding(num_classes, num_features * 16))
@@ -44,22 +44,29 @@ class SNResNetProjectionDiscriminator(nn.Module):
         h = x
         for i in range(1, 7):
             h = getattr(self, 'block{}'.format(i))(h)
-        h = self.activation(h)
-        # Global pooling
-        h = torch.sum(h, dim=(2, 3))
+        # h = self.activation(h)
+        # # Global pooling
+        # h = torch.sum(h, dim=(2, 3))
+        h = h.view(-1, self.num_features*16*2*2)
         output = self.l7(h)
         if y is not None:
             output += torch.sum(self.l_y(y) * h, dim=1, keepdim=True)
         return output
 
+    # def gradient_penalty(self, y, x):
+    #     weight = torch.ones_like(y)
+    #     gradient = torch.autograd.grad(outputs=y, inputs=x, grad_outputs=weight, retain_graph=True, create_graph=True, only_inputs=True)[0]
+    #     gradient = gradient.view(gradient.size(0),-1)       
+    #     gradient = ((gradient.norm(2,1)-1) **2).mean()
+
+    #     return gradient
     def gradient_penalty(self, y, x):
         weight = torch.ones_like(y)
-        gradient = torch.autograd.grad(outputs=y, inputs=x, grad_outputs=weight, retain_graph=True, create_graph=True, only_inputs=True)[0]
-        gradient = gradient.view(gradient.size(0),-1)       
-        gradient = ((gradient.norm(2,1)-1) **2).mean()
+        dydx = torch.autograd.grad(outputs=y, inputs=x, grad_outputs=weight, retain_graph=True, create_graph=True, only_inputs=True)[0]
+        dydx = dydx.view(dydx.size(0),-1)       
+        dydx_l2norm = torch.sqrt(torch.sum(dydx**2,dim=1))
 
-        return gradient
-
+        return torch.mean((dydx_l2norm-1)**2)
 
 class SNResNetConcatDiscriminator(nn.Module):
 

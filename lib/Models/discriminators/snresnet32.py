@@ -16,15 +16,15 @@ class SNResNetProjectionDiscriminator(nn.Module):
         self.num_classes = num_classes
         self.activation = activation
 
-        self.block1 = OptimizedBlock(3, num_features)
+        self.block1 = OptimizedBlock(3, num_features)                   #16
 
         self.block2 = Block(num_features, num_features,
-                            activation=activation, downsample=True)
+                            activation=activation, downsample=True)     #8
         self.block3 = Block(num_features, num_features,
-                            activation=activation, downsample=False)
+                            activation=activation, downsample=False)    #4?
         self.block4 = Block(num_features, args.var_latent_dim,
-                            activation=activation, downsample=False)
-        self.l5 = utils.spectral_norm(nn.Linear(num_features, 1))
+                            activation=activation, downsample=False)    #2?
+        self.l5 = utils.spectral_norm(nn.Linear(args.var_latent_dim, 1))
         if num_classes > 0:
             self.l_y = utils.spectral_norm(
                 nn.Embedding(num_classes, num_features))

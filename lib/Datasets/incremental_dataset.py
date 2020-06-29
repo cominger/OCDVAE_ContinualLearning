@@ -2,33 +2,13 @@ import math
 import os
 import torchvision
 import torch.utils.data
-import numpy as np
 from tqdm import tqdm
 from tqdm import trange
 import lib.OpenSet.meta_recognition as mr
 from lib.Training.evaluate import sample_per_class_zs
 import lib.Datasets.datasets as all_datasets
 from lib.Training.evaluate import eval_dataset
-import torchvision.transforms as transforms
 
-class CustomTensorDataset(torch.utils.data.Dataset):
-    """ TensorDataset with support of transforms
-    """
-    def __init__(self, tensors, transform=None):
-        # assert all(tensors[0].size(0) == tensor.size(0) for tensor in tensors)
-        self.tensors = tensors
-        self.transform = transform
-
-    def __getitem__(self, index):
-        x = self.tensors[index][0]
-        if self.transform:
-            x = self. transform(x)
-        y = self.tensors[index][1]
-
-        return x, y
-
-    def __len__(self):
-        return len(self.tensors)
 
 def get_incremental_dataset(parent_class, args):
     """
@@ -86,48 +66,19 @@ def get_incremental_dataset(parent_class, args):
 
             self.vis_size = 144
 
-            self.trainsets, self.no_trans_trainsets, self.valsets = {}, {}, {}
+            self.trainsets, self.valsets = {}, {}
 
             self.class_to_idx = {}
 
-            # Get the correspoding transformation due to TensorDataset
-            self.train_transforms, self.val_transforms = self.__get_transforms(args.patch_size)
             # Split the parent dataset class into into datasets per class
-            self.__get_incremental_datasets(self.train_transforms, self.val_transforms)
+            self.__get_incremental_datasets()
 
             # Get the corresponding class datasets for the initial datasets as specified by number and order
             self.trainset, self.valset = self.__get_initial_dataset()
             # Get the respective initial class data loaders
             self.train_loader, self.val_loader = self.get_dataset_loader(args.batch_size, args.workers, is_gpu)
 
-        def __get_transforms(self, patch_size):
-            # optionally scale the images and repeat to three channels
-            # important note: these transforms will only be called once during the
-            # creation of the dataset and no longer in the incremental datasets that inherit.
-            # Adding data augmentation here is thus the wrong place!
-            re_patch_size = patch_size+int(math.ceil(patch_size * 0.1))
-            train_transforms = transforms.Compose([
-                transforms.ToPILImage(mode = "RGB"),
-                # transforms.Resize(size = (re_patch_size,re_patch_size)),
-                # transforms.RandomCrop(size=(patch_size,patch_size)),
-                transforms.RandomHorizontalFlip(),
-                transforms.Resize(patch_size),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5, 0.5, 0.5)),
-            ])
-
-            val_transforms = transforms.Compose([
-                transforms.ToPILImage(mode = "RGB"),
-                # transforms.Resize(size = (re_patch_size,re_patch_size)),
-                # transforms.CenterCrop(size=(patch_size,patch_size)),
-                transforms.Resize(patch_size),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5, 0.5, 0.5)),
-            ])
-
-            return train_transforms, val_transforms
-
-        def __get_incremental_datasets(self, train_transforms, val_transforms):
+        def __get_incremental_datasets(self):
             """
             Splits the existing parent dataset into separate datasets per class. As our model's use a single-head
             growing classifier, also relabels the targets according to task sequence so the first encountered class
@@ -141,7 +92,8 @@ def get_incremental_dataset(parent_class, args):
                     tensors_list.append([])
                     targets_list.append([])
                 # loop through the entire dataset
-                for i, (inp, target) in enumerate(datasets[j]):
+                print("Splitting the dataset into class increments")
+                for i, (inp, target) in enumerate(tqdm(datasets[j])):
                     # because data loaders (especially from torchvision) can provide targets in different formats,
                     # we include a potential conversion step from e.g. one-hot to integer as this is what our loss
                     # functions will use.
@@ -170,12 +122,9 @@ def get_incremental_dataset(parent_class, args):
                     targets_list[i] = torch.LongTensor(targets_list[i])
 
                     if j == 0:
-                        train_tensor = torch.utils.data.TensorDataset(tensors_list[i], targets_list[i])
-                        self.trainsets[i] = CustomTensorDataset(train_tensor, train_transforms)
-                        self.no_trans_trainsets[i] = CustomTensorDataset(train_tensor, val_transforms)
+                        self.trainsets[i] = torch.utils.data.TensorDataset(tensors_list[i], targets_list[i])
                     else:
-                        val_tensor = torch.utils.data.TensorDataset(tensors_list[i], targets_list[i])
-                        self.valsets[i] = CustomTensorDataset(val_tensor, val_transforms)
+                        self.valsets[i] = torch.utils.data.TensorDataset(tensors_list[i], targets_list[i])
 
         def __get_initial_dataset(self):
             """
@@ -219,7 +168,7 @@ def get_incremental_dataset(parent_class, args):
             """
 
             train_loader = torch.utils.data.DataLoader(self.trainset, batch_size=batch_size, shuffle=True,
-                                                       num_workers=workers, pin_memory=is_gpu)
+                                                       num_workers=workers, pin_memory=is_gpu, sampler=None)
 
             val_loader = torch.utils.data.DataLoader(self.valset, batch_size=batch_size, shuffle=True,
                                                      num_workers=workers, pin_memory=is_gpu)
@@ -305,8 +254,7 @@ def get_incremental_dataset(parent_class, args):
             self.train_loader, self.val_loader = self.get_dataset_loader(batch_size, workers, is_gpu)
 
         def generate_seen_tasks(self, model, batch_size, seen_dataset_size, writer, save_path,
-                                openset=False, openset_threshold=0.05, openset_tailsize=0.05,
-                                 autoregression=False):
+                                openset=False, openset_threshold=0.05, openset_tailsize=0.05, autoregression=False):
             """
             The function implementing the actual generative replay and openset generative replay with statistical
             outlier rejection.
@@ -341,10 +289,10 @@ def get_incremental_dataset(parent_class, args):
             # i.e. the OCDVAE, if not we continue with conventional generative replay where every sample is a simple
             # draw from the Unit Gaussian prior, i.e. a CDVAE.
             if openset:
-                # # Start with fitting the Weibull functions based on the available train data and the classes seen
-                # # so far. Note that if generative replay has been called before after the first task increment,
-                # # this means that previous train data consists of already generated data.
-                # # Evaluate the training dataset to find the correctly classified examples.
+                # Start with fitting the Weibull functions based on the available train data and the classes seen
+                # so far. Note that if generative replay has been called before after the first task increment,
+                # this means that previous train data consists of already generated data.
+                # Evaluate the training dataset to find the correctly classified examples.
                 dataset_train_dict = eval_dataset(model, self.train_loader,
                                                   len(self.seen_tasks) - self.num_increment_tasks, self.device,
                                                   samples=self.args.var_samples)
@@ -454,7 +402,7 @@ def get_incremental_dataset(parent_class, args):
                         # actually generate images from valid zs
                         for i in trange(0, len(zs), batch_size):
                             gen = model.module.decode(zs[i:i + batch_size])
-                            # gen = torch.sigmoid(gen)
+                            #gen = torch.sigmoid(gen)
                             if autoregression:
                                 gen = model.module.pixelcnn.generate(gen)
                             data.append(gen.data.cpu())
@@ -477,7 +425,6 @@ def get_incremental_dataset(parent_class, args):
 
                         # return the new trainset.
                         trainset = torch.utils.data.TensorDataset(data, targets)
-                        trainset = CustomTensorDataset(trainset, self.train_transforms)
                         return trainset
 
             # If openset generative replay with outlier rejection has failed (e.g. rejection prior set to something
@@ -486,12 +433,12 @@ def get_incremental_dataset(parent_class, args):
             if not openset or not openset_success:
                 print("Using generative model to replay old data")
                 for i in trange(int(seen_dataset_size / batch_size)):
-                    # sample from the class condition prior
+                    # sample from the prior
                     z_samples = torch.randn(batch_size, model.module.latent_dim).to(self.device)
 
                     # calculate probabilistic decoder, generate data points
                     gen = model.module.decode(z_samples)
-                    # gen = torch.sigmoid(gen)
+                    #gen = torch.sigmoid(gen)
                     if autoregression:
                         gen = model.module.pixelcnn.generate(gen)
 
@@ -511,7 +458,8 @@ def get_incremental_dataset(parent_class, args):
                 subset_idx = sd_idx[torch.floor(torch.arange(0, data.size(0), data.size(0) / self.vis_size)).long()]
                 viz_subset = data[subset_idx]
 
-                imgs = torchvision.utils.make_grid(viz_subset, nrow=int(math.sqrt(self.vis_size)), padding=5, normalize=True)
+                imgs = torchvision.utils.make_grid(viz_subset, nrow=int(math.sqrt(self.vis_size)), padding=5,
+                                                   normalize=True)
                 torchvision.utils.save_image(viz_subset, os.path.join(save_path, 'samples_seen_tasks_' +
                                                                       str(len(self.seen_tasks) -
                                                                           self.num_increment_tasks) + '.png'),
@@ -520,7 +468,6 @@ def get_incremental_dataset(parent_class, args):
 
             # return generated trainset
             trainset = torch.utils.data.TensorDataset(data, targets)
-            trainset = CustomTensorDataset(trainset, self.train_transforms)
             return trainset
 
     class CrossDataset:
@@ -930,7 +877,7 @@ def get_incremental_dataset(parent_class, args):
                         # actually generate images from valid zs
                         for i in trange(0, len(zs), batch_size):
                             gen = model.module.decode(zs[i:i + batch_size])
-                            gen = torch.sigmoid(gen)
+                            #gen = torch.sigmoid(gen)
                             if autoregression:
                                 gen = model.module.pixelcnn.generate(gen)
                             data.append(gen.data.cpu())
@@ -943,7 +890,7 @@ def get_incremental_dataset(parent_class, args):
                         viz_subset = data[subset_idx]
 
                         imgs = torchvision.utils.make_grid(viz_subset, nrow=int(math.sqrt(self.vis_size)),
-                                                           padding=5)
+                                                           padding=5, normalize=True, range=(0, 1))
                         torchvision.utils.save_image(viz_subset, os.path.join(save_path, 'samples_seen_tasks_' +
                                                                               str(len(self.seen_tasks) -
                                                                                   self.num_increment_tasks) + '.png'),
@@ -966,7 +913,7 @@ def get_incremental_dataset(parent_class, args):
 
                     # calculate probabilistic decoder, generate data points
                     gen = model.module.decode(z_samples)
-                    gen = torch.sigmoid(gen)
+                    #gen = torch.sigmoid(gen)
                     if autoregression:
                         gen = model.module.pixelcnn.generate(gen)
 
@@ -986,7 +933,8 @@ def get_incremental_dataset(parent_class, args):
                 subset_idx = sd_idx[torch.floor(torch.arange(0, data.size(0), data.size(0) / self.vis_size)).long()]
                 viz_subset = data[subset_idx]
 
-                imgs = torchvision.utils.make_grid(viz_subset, nrow=int(math.sqrt(self.vis_size)), padding=5)
+                imgs = torchvision.utils.make_grid(viz_subset, nrow=int(math.sqrt(self.vis_size)), padding=5,
+                                                   normalize=True, range=(0, 1))
                 torchvision.utils.save_image(viz_subset, os.path.join(save_path, 'samples_seen_tasks_' +
                                                                       str(len(self.seen_tasks) -
                                                                           self.num_increment_tasks) + '.png'),

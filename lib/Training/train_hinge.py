@@ -8,7 +8,7 @@ from lib.Utility.visualization import visualize_image_grid
 import lib.OpenSet.meta_recognition as mr
 from .augmentation import blur_data
 
-def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path, args):
+def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimizer_disc, writer, device, save_path, args):
     """
     Trains/updates the model for one epoch on the training dataset.
 
@@ -58,31 +58,34 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
 
         # this needs to be below the line where the reconstruction target is set
         # sample and add noise to the input (but not to the target!).
-        if args.denoising_noise_value > 0.0:
-            noise = torch.randn(inp.size()).to(device) * args.denoising_noise_value
-            inp = inp + noise
+        # if args.denoising_noise_value > 0.0:
+        #     noise = torch.randn(inp.size()).to(device) * args.denoising_noise_value
+        #     inp = inp + noise
 
-        if args.blur:
-            inp = blur_data(inp, args.patch_size, device)
+        # if args.blur:
+        #     inp = blur_data(inp, args.patch_size, device)
 
         # measure data loading time
         data_time.update(time.time() - end)
 
         # Model explanation: Conventionally GAN architecutre update D first and G
         #### D Update#### 
-        class_samples, recon_samples, mu, std = model(inp)
         mu_label = None
 
+        #update Real Image
         real_z = model.module.forward_D(recon_target, mu_label)
         D_loss_real = torch.mean(torch.nn.functional.relu(1. - real_z)) #hinge
         D_losses_real.update(D_loss_real.item(), inp.size(0))
 
-        n,b,c,x,y = recon_samples.shape
+        #update Recon Image
+        class_samples, recon_samples, mu, std = model(inp)
+        n,b,c,x,y = recon_samples.shape 
         recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)).detach(), mu_label)
-        fake_samples = model.module.generate(recon_target.size(0))
-        fake_z = model.module.forward_D(fake_samples.detach(), mu_label)
-
         D_loss_fake = torch.mean(torch.nn.functional.relu(1. + recon_z)) #hinge
+
+        #update generate Image
+        fake_samples = model.module.generate(recon_target.size(0))
+        fake_z = model.module.forward_D(fake_samples, mu_label)
         D_loss_fake += torch.mean(torch.nn.functional.relu(1. + fake_z)) #hinge
         D_loss_fake *= 0.5
 
@@ -92,11 +95,11 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         D_losses.update(GAN_D_loss.item(), inp.size(0))
 
         # compute gradient and do SGD step
-        optimizer['enc'].zero_grad()
-        optimizer['dec'].zero_grad()
-        optimizer['disc'].zero_grad()
+        optimizer_enc.zero_grad()
+        optimizer_dec.zero_grad()
+        optimizer_disc.zero_grad()
         GAN_D_loss.backward()
-        optimizer['disc'].step()
+        optimizer_disc.step()
 
         #### G Update####
         if i % 1 == 0:
@@ -146,12 +149,13 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
                     args.perception_weight * GAN_Enc_loss
 
             losses.update(loss.item(), inp.size(0))
-            optimizer['enc'].zero_grad()
-            optimizer['dec'].zero_grad()
-            optimizer['disc'].zero_grad()
+
+            optimizer_enc.zero_grad()
+            optimizer_dec.zero_grad()
+            optimizer_disc.zero_grad()
             loss.backward()
-            optimizer['enc'].step()
-            optimizer['dec'].step()
+            optimizer_dec.step()
+            optimizer_enc.step()
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -185,11 +189,14 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
     writer.add_scalar('training/train_KLD', kld_losses.avg, epoch)
     writer.add_scalar('training/train_class_loss', class_losses.avg, epoch)
     writer.add_scalar('training/train_recon_loss', recon_losses.avg, epoch)
-    writer.add_scalar('training/train_G_loss', G_losses.avg, epoch)
+    # Discriminator related
     writer.add_scalar('training/train_D_loss', D_losses.avg, epoch)
     writer.add_scalar('training/train_D_loss_real', D_losses_real.avg, epoch)
     writer.add_scalar('training/train_D_loss_fake', D_losses_fake.avg, epoch)
+    # Generator related
+    writer.add_scalar('training/train_G_loss', G_losses.avg, epoch)
     writer.add_scalar('training/train_G_loss_fake', G_losses_fake.avg, epoch)
+    writer.add_scalar('training/train_G_percetion_loss', G_losses_enc.avg, epoch)
 
     # If the log weights argument is specified also add parameter and gradient histograms to TensorBoard.
     if args.log_weights:

@@ -13,7 +13,7 @@ class ResNetGenerator(nn.Module):
                  activation=F.relu, num_classes=0):
         super(ResNetGenerator, self).__init__()
         
-        self.num_features = num_features
+        self.num_features = int(num_features/10)
         self.bottom_width = bottom_width
         self.activation = activation
         self.num_classes = num_classes
@@ -46,4 +46,4 @@ class ResNetGenerator(nn.Module):
         for i in [2, 3, 4, 5, 6]:
             h = getattr(self, 'block{}'.format(i))(h, y, **kwargs)
         h = self.activation(self.b7(h))
-        return torch.tanh(self.conv7(h))
+        return self.conv7(h)
