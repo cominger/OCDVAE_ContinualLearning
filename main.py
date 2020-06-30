@@ -69,17 +69,18 @@ def main():
         elif args.gan_loss == 'hinge-gan':
             from lib.Training.train_hinge import train
 
-        #VAE_gan based update
-        elif args.gan_loss == "vae-wgan-gp":
-            from lib.Training.train_vae_wgan_gp import train
-        elif args.gan_loss == "vae-hinge":
-            from lib.Training.train_vae_hinge import train
+        # #VAE_gan based update
+        # elif args.gan_loss == "vae-wgan-gp":
+        #     from lib.Training.train_vae_wgan_gp import train
+        # elif args.gan_loss == "vae-hinge":
+        #     from lib.Training.train_vae_hinge import train
 
-        # DGR
-        elif args.gan_loss == "dgr-lsgan":
-            from lib.Training.train_dgr_lsgan import train
+        # # DGR
+        # elif args.gan_loss == "dgr-lsgan":
+        #     from lib.Training.train_dgr_lsgan import train
         else:
-            from lib.Training.train_dgr import train
+            # from lib.Training.train_dgr import train
+            print ("wrong gan losses")
 
         save_path += args.gan_loss
     if args.introvae:
@@ -239,10 +240,6 @@ def main():
         WeightInitializer = WeightInit(args.weight_init)
         WeightInitializer.init_model(model)
 
-    # assert total_temp == temp
-    # for name, param in model.named_parameters():
-    #     if not param.requires_grad:
-    #         print(name)
 
     # Define optimizer and loss function (criterion)
     encoder_param = list(model.encoder.parameters()) + list(model.latent_mu.parameters()) \
@@ -330,11 +327,6 @@ def main():
 
                 # reset moving averages etc. of the optimizer 
                 optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
-                # model = model.module
-                # optimizer_enc = torch.optim.Adam(list(model.encoder.parameters()) + list(model.latent_mu.parameters()) + list(model.latent_std.parameters()) + list(model.classifier.parameters())
-                #                         , args.learning_rate)
-                # # Parallel container for multi GPU use and cast to available device
-                # model = torch.nn.DataParallel(model).to(device)
 
             # change the number of seen classes
             if epoch % args.epochs == 0:

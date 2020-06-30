@@ -109,8 +109,6 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
             # OCDVAE calculate loss
             class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
                                                          device, args)
-            # add the individual loss components together and weight the KL term.
-            # loss = class_loss + args.l1_weight * recon_loss + args.var_beta * kld_loss
 
             output = torch.mean(class_samples, dim=0)
             # record precision/accuracy and losses
