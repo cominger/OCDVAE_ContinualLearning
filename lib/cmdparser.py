@@ -28,6 +28,11 @@ parser.add_argument('--weight-init', default='kaiming-normal',
                     help='weight-initialization scheme (default: kaiming-normal)')
 parser.add_argument('--wrn-depth', default=16, type=int,
                     help='amount of layers in the wide residual network (default: 16)')
+parser.add_argument('-big-wrn', '--wrn-high-resolution', type=bool,
+                    help='If turned on, downsamples 4 times by factor 2 instead of twice for use with '
+                         'high resolution images')
+parser.add_argument('-deep-wrn', '--wrn-deep-blocks', type=bool,
+                    help='If turned on, uses 6 instead of 3 blocks and downsamples 6 times by factor 2')
 parser.add_argument('--wrn-widen-factor', default=10, type=int,
                     help='width factor of the wide residual network (default: 10)')
 parser.add_argument('--wrn-embedding-size', type=int, default=48,
@@ -112,14 +117,12 @@ parser.add_argument('--debug','-d',action = 'store_true', help = 'pdb enable')
 
 # GAN related paramter
 parser.add_argument('--gan', action = 'store_true', help ='train generator as gan fashion')
+parser.add_argument('--proj-cond', action = 'store_true', help ='train as projection gan')
+# parser.add_argument('--sigmoid', action='store_true', help = 'gen activation function')
+parser.add_argument('--tanh', action='store_true', help = 'gen activation function')
 parser.add_argument('--gan-loss', default='hinge-gan', help='gan loss type \
                                                             ex) gan: higne-gan, wgan-gp, lsgan, \
                                                                 vae-gan: vae-hing_gan, vae-wgan-gp')
-# parser.add_argument('--proj-gan', action = 'store_true', help ='train generator as gan fashion')
-# parser.add_argument('--wgan-gp', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
-# parser.add_argument('--vae-wgan-gp', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
-# parser.add_argument('--lsgan', action = 'store_true', help ='Chnage Gan loss from hinge to lsgan')
-# parser.add_argument('--vae-hinge-gan', action = 'store_true', help ='Chnage Gan loss from hinge to wgan-gp')
 
 parser.add_argument('--gen-learning-rate', default = 1e-4, type=float, help ='train generator as gan fashion')
 parser.add_argument('--dis-learning-rate', default = 1e-4, type=float, help ='train discriminator as gan fashion')
@@ -127,7 +130,13 @@ parser.add_argument('--num-dis-feature', default=64, type=int, help='number of t
 parser.add_argument('--num-gan-feature', default=64, type=int, help='number of total epochs to run')
 
 parser.add_argument('--var-gan-weight', default = 1, type = float)
-parser.add_argument('--l1-weight', default = 1, type = float)
+
+parser.add_argument('--recon-weight', default = 1, type = float)
+parser.add_argument('--recon-loss', default='pixel', help='gan loss type \
+                                                            ex) gan: higne-gan, wgan-gp, lsgan, \
+                                                                vae-gan: vae-hing_gan, vae-wgan-gp')
+
+
 parser.add_argument('--perception-weight', default = 0, type = float)
 parser.add_argument('--lambda-gp', default = 10, type = float)
 

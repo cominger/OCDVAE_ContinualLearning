@@ -44,7 +44,6 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
 
     # switch to train mode
     model.train()
-    GAN_criterion = torch.nn.MSELoss()
 
     end = time.time()
 
@@ -72,6 +71,9 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         #### D Update#### 
         class_samples, recon_samples, mu, std = model(inp)
         mu_label = None
+        if args.proj_cond:
+            mu_label = model.module.reparameterize(mu, std)
+            mu_label = mu_label.detach()
 
         real_z = model.module.forward_D(recon_target, mu_label)
         D_loss_real = GAN_criterion(real_z, torch.ones_like(real_z))
@@ -80,7 +82,12 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         n,b,c,x,y = recon_samples.shape
         recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)).detach(), mu_label)
         fake_samples = model.module.generate(recon_target.size(0))
-        fake_z = model.module.forward_D(fake_samples.detach(), mu_label)
+        fake_mu_label = None
+        if args.proj_cond:
+            _, _, fake_mu, fake_std = model.module.encode(fake_samples.detach())
+            fake_mu_label = model.module.reparameterize(fake_mu, fake_std)
+            mu_label = mu_label.detach()
+        fake_z = model.module.forward_D(fake_samples.detach(), fake_mu_label)
 
         D_loss_fake = GAN_criterion(recon_z, torch.zeros_like(recon_z))
         D_loss_fake += GAN_criterion(fake_z, torch.zeros_like(fake_z))
@@ -102,6 +109,9 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
         if i % 1 == 0:
             class_samples, recon_samples, mu, std = model(inp)
             mu_label = None
+            if args.proj_cond:
+                mu_label = model.module.reparameterize(mu, std)
+                mu_label = mu_label.detach()
 
             # OCDVAE calculate loss
             class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
@@ -119,7 +129,7 @@ def train(Dataset, model, criterion, epoch, optimizer, writer, device, save_path
             kld_losses.update(kld_loss.item(), inp.size(0))
 
             n,b,c,x,y = recon_samples.shape
-            recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y).detach()), mu_label)
+            recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label)
 
             GAN_G_loss = GAN_criterion(recon_z, torch.ones_like(recon_z))
             G_losses_fake.update(GAN_G_loss.item(), inp.size(0))

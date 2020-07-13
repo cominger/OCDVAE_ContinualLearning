@@ -24,13 +24,15 @@ import lib.Datasets.datasets as datasets
 from lib.Models.initialization import WeightInit
 from lib.Models.architectures import grow_classifier
 from lib.cmdparser import parser
-# from lib.Training.train_lsgan import train
+from lib.Training.train_encoder import train
 from lib.Training.validate import validate
 from lib.Training.loss_functions import unified_loss_function as criterion
 from lib.Utility.utils import save_checkpoint, save_task_checkpoint
 from lib.Training.evaluate import get_latent_embedding
 from lib.Utility.visualization import args_to_tensorboard
 from lib.Utility.visualization import visualize_dataset_in_2d_embedding
+import torchvision.transforms as transforms
+import torchvision
 
 
 # Comment this if CUDNN benchmarking is not desired
@@ -60,32 +62,6 @@ def main():
     # add option specific naming to separate tensorboard log files later
     if args.autoregression:
         save_path += '_pixelcnn'
-    if args.gan:
-        # GAN based update
-        if args.gan_loss == 'wgan-gp':
-            from lib.Training.train_wgan_gp import train
-        elif args.gan_loss == 'lsgan':
-            from lib.Training.train_lsgan import train
-        elif args.gan_loss == 'hinge-gan':
-            from lib.Training.train_hinge import train
-
-        # #VAE_gan based update
-        # elif args.gan_loss == "vae-wgan-gp":
-        #     from lib.Training.train_vae_wgan_gp import train
-        # elif args.gan_loss == "vae-hinge":
-        #     from lib.Training.train_vae_hinge import train
-
-        # # DGR
-        # elif args.gan_loss == "dgr-lsgan":
-        #     from lib.Training.train_dgr_lsgan import train
-        else:
-            # from lib.Training.train_dgr import train
-            print ("wrong gan losses")
-
-        save_path += args.gan_loss
-    if args.introvae:
-        from lib.Training.train_intro_vae import train
-        save_path += 'introvae'
 
     if args.incremental_data:
         save_path += '_incremental'
@@ -278,6 +254,8 @@ def main():
             print("=> no checkpoint found at '{}'".format(args.resume))
 
     # optimize until final amount of epochs is reached. Final amount of epochs is determined through the
+    mergan_task_location = "/media/cvpr-miu/4TB_1/yonggis/il_related/MeRGAN_yhgon/MeRGAN-master/result/flower17_base_2_step_1_RA_1e_3_run2/gen_samples/"
+    task_number = 1 
     while epoch < (args.epochs * epoch_multiplier):
         if (epoch+2)%args.epochs == 0:
             print("debug perpose")
@@ -313,6 +291,19 @@ def main():
                                         openset_threshold=args.openset_generative_replay_threshold,
                                         openset_tailsize=args.openset_weibull_tailsize,
                                         autoregression=args.autoregression)
+                cur_task_path = os.path.join(mergan_task_location, str(task_number))
+                train_transforms = transforms.Compose([
+                            transforms.RandomHorizontalFlip(),
+                            transforms.Resize(args.patch_size),
+                            transforms.CenterCrop(args.patch_size),
+                            transforms.ToTensor(),
+                ])
+                if not os.path.exists(cur_task_path):
+                    exit()
+                MeRGAN_dataset = torchvision.datasets.ImageFolder(root=cur_task_path, transform=train_transforms,
+                                         target_transform= lambda id: torch.tensor(id))
+                dataset.trainset = torch.utils.data.ConcatDataset([dataset.trainset,MeRGAN_dataset])
+                dataset.train_loader, dataset.val_loader = dataset.get_dataset_loader(args.batch_size, args.workers, torch.cuda.is_available())
 
                 # grow the classifier and increment the variable for number of overall classes so we can use it later
                 if args.cross_dataset:
@@ -327,13 +318,14 @@ def main():
 
                 # reset moving averages etc. of the optimizer 
                 optimizer = torch.optim.Adam(model.parameters(), args.learning_rate)
+                task_number += 1
 
             # change the number of seen classes
             if epoch % args.epochs == 0:
                 model.module.seen_tasks = dataset.seen_tasks
 
         # train
-        train(dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimizer_disc, writer, device, save_path, args)
+        train(dataset, model, criterion, epoch, optimizer_enc, writer, device, save_path, args)
 
         # evaluate on validation set
         prec, loss = validate(dataset, model, criterion, epoch, writer, device, save_path, args)

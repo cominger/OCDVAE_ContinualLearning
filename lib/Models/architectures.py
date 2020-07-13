@@ -407,7 +407,6 @@ class WRN(nn.Module):
                 ('encoder_block4', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[4],
                                                    WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
                 ('encoder_bn1', nn.BatchNorm2d(self.nChannels[4], eps=self.batch_norm)),
-                ('encoder_bn1', nn.BatchNorm2d(self.nChannels[4], eps=self.batch_norm)),
                 ('encoder_act1', nn.ReLU(inplace=True))
             ]))
 
@@ -525,6 +524,9 @@ class WRN_gan(nn.Module):
         self.num_classes = num_classes
         self.device = device
         self.out_channels = args.out_channels
+        self.larger_downsampling = args.wrn_high_resolution
+        self.deeper_blocks = args.wrn_deep_blocks
+        self.tanh = args.tanh
 
         self.seen_tasks = []
 
@@ -532,28 +534,15 @@ class WRN_gan(nn.Module):
         self.latent_dim = args.var_latent_dim
 
         self.nChannels = [args.wrn_embedding_size, 16 * self.widen_factor, 32 * self.widen_factor,
-                          64 * self.widen_factor, 64 * self.widen_factor]
+                          64 * self.widen_factor, 64 * self.widen_factor, 64 * self.widen_factor,
+                          64 * self.widen_factor]
 
-        if self.patch_size < 64:
-            assert ((self.depth - 2) % 6 == 0)
-            self.num_block_layers = int((self.depth - 2) / 6)
-
-            self.encoder = nn.Sequential(OrderedDict([
-                ('encoder_conv1', nn.Conv2d(num_colors, self.nChannels[0], kernel_size=3, stride=1, padding=1, bias=False)),
-                ('encoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[0], self.nChannels[1],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm)),
-                ('encoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[2],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
-                ('encoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[3],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
-                ('encoder_bn1', nn.BatchNorm2d(self.nChannels[3], eps=self.batch_norm)),
-                ('encoder_act1', nn.ReLU(inplace=True))
-            ]))
-        else:
+        if self.larger_downsampling:
             assert ((self.depth - 2) % 8 == 0)
             self.num_block_layers = int((self.depth - 2) / 8)
             self.encoder = nn.Sequential(OrderedDict([
-                ('encoder_conv1', nn.Conv2d(num_colors, self.nChannels[0], kernel_size=3, stride=1, padding=1, bias=False)),
+                ('encoder_conv1',
+                 nn.Conv2d(num_colors, self.nChannels[0], kernel_size=3, stride=1, padding=1, bias=False)),
                 ('encoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[0], self.nChannels[1],
                                                    WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
                 ('encoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[2],
@@ -563,6 +552,43 @@ class WRN_gan(nn.Module):
                 ('encoder_block4', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[4],
                                                    WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
                 ('encoder_bn1', nn.BatchNorm2d(self.nChannels[4], eps=self.batch_norm)),
+                ('encoder_act1', nn.ReLU(inplace=True))
+            ]))
+        elif self.deeper_blocks:
+            assert ((self.depth - 2) % 12 == 0)
+            self.num_block_layers = int((self.depth - 2) / 12)
+            self.encoder = nn.Sequential(OrderedDict([
+                ('encoder_conv1',
+                 nn.Conv2d(num_colors, self.nChannels[0], kernel_size=3, stride=1, padding=1, bias=False)),
+                ('encoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[0], self.nChannels[1],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
+                ('encoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[2],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
+                ('encoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[3],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
+                ('encoder_block4', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[4],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
+                ('encoder_block5', WRNNetworkBlock(self.num_block_layers, self.nChannels[4], self.nChannels[5],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
+                ('encoder_block6', WRNNetworkBlock(self.num_block_layers, self.nChannels[5], self.nChannels[6],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
+                ('encoder_bn1', nn.BatchNorm2d(self.nChannels[6], eps=self.batch_norm)),
+                ('encoder_act1', nn.ReLU(inplace=True))
+            ]))
+        else:
+            assert ((self.depth - 2) % 6 == 0)
+            self.num_block_layers = int((self.depth - 2) / 6)
+
+            self.encoder = nn.Sequential(OrderedDict([
+                ('encoder_conv1',
+                 nn.Conv2d(num_colors, self.nChannels[0], kernel_size=3, stride=1, padding=1, bias=False)),
+                ('encoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[0], self.nChannels[1],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm)),
+                ('encoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[2],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
+                ('encoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[3],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=2)),
+                ('encoder_bn1', nn.BatchNorm2d(self.nChannels[3], eps=self.batch_norm)),
                 ('encoder_act1', nn.ReLU(inplace=True))
             ]))
 
@@ -578,37 +604,62 @@ class WRN_gan(nn.Module):
         self.latent_decoder = nn.Linear(self.latent_dim, self.enc_spatial_dim_x * self.enc_spatial_dim_y *
                                         self.enc_channels, bias=False)
 
-        if self.patch_size < 64:
+        if self.larger_downsampling:
             self.decoder = nn.Sequential(OrderedDict([
-                ('decoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[2],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
+                ('decoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[4], self.nChannels[3],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
                 ('decoder_upsample1', nn.Upsample(scale_factor=2, mode='nearest')),
-                ('decoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[1],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
+                ('decoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[2],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
                 ('decoder_upsample2', nn.Upsample(scale_factor=2, mode='nearest')),
-                ('decoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[0],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
+                ('decoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[1],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                ('decoder_upsample3', nn.Upsample(scale_factor=2, mode='nearest')),
+                ('decoder_block4', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[0],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
                 ('decoder_bn1', nn.BatchNorm2d(self.nChannels[0], eps=self.batch_norm)),
                 ('decoder_act1', nn.ReLU(inplace=True)),
+                ('decoder_upsample4', nn.Upsample(scale_factor=2, mode='nearest')),
+                ('decoder_conv1', nn.Conv2d(self.nChannels[0], self.out_channels, kernel_size=3, stride=1, padding=1,
+                                            bias=False))
+            ]))
+        elif self.deeper_blocks:
+            self.decoder = nn.Sequential(OrderedDict([
+                ('decoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[6], self.nChannels[5],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                ('decoder_upsample1', nn.Upsample(scale_factor=2, mode='nearest')),
+                ('decoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[5], self.nChannels[4],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                ('decoder_upsample2', nn.Upsample(scale_factor=2, mode='nearest')),
+                ('decoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[4], self.nChannels[3],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                ('decoder_upsample3', nn.Upsample(scale_factor=2, mode='nearest')),
+                ('decoder_block4', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[2],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                ('decoder_upsample4', nn.Upsample(scale_factor=2, mode='nearest')),
+                ('decoder_block5', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[1],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                ('decoder_upsample5', nn.Upsample(scale_factor=2, mode='nearest')),
+                ('decoder_block6', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[0],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
+                ('decoder_bn1', nn.BatchNorm2d(self.nChannels[0], eps=self.batch_norm)),
+                ('decoder_act1', nn.ReLU(inplace=True)),
+                ('decoder_upsample6', nn.Upsample(scale_factor=2, mode='nearest')),
                 ('decoder_conv1', nn.Conv2d(self.nChannels[0], self.out_channels, kernel_size=3, stride=1, padding=1,
                                             bias=False))
             ]))
         else:
             self.decoder = nn.Sequential(OrderedDict([
-                ('decoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[4], self.nChannels[3],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
+                ('decoder_block1', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[2],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
                 ('decoder_upsample1', nn.Upsample(scale_factor=2, mode='nearest')),
-                ('decoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[3], self.nChannels[2],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
+                ('decoder_block2', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[1],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
                 ('decoder_upsample2', nn.Upsample(scale_factor=2, mode='nearest')),
-                ('decoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[2], self.nChannels[1],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
-                ('decoder_upsample3', nn.Upsample(scale_factor=2, mode='nearest')),
-                ('decoder_block4', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[0],
-                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1, is_transposed=True)),
+                ('decoder_block3', WRNNetworkBlock(self.num_block_layers, self.nChannels[1], self.nChannels[0],
+                                                   WRNBasicBlock, batchnorm=self.batch_norm, stride=1)),
                 ('decoder_bn1', nn.BatchNorm2d(self.nChannels[0], eps=self.batch_norm)),
                 ('decoder_act1', nn.ReLU(inplace=True)),
-                ('decoder_upsample4', nn.Upsample(scale_factor=2, mode='nearest')),
                 ('decoder_conv1', nn.Conv2d(self.nChannels[0], self.out_channels, kernel_size=3, stride=1, padding=1,
                                             bias=False))
             ]))
@@ -631,7 +682,10 @@ class WRN_gan(nn.Module):
         if self.patch_size ==32:
             from .discriminators.snresnet32 import SNResNetProjectionDiscriminator
         elif self.patch_size == 64:
-            from .discriminators.snresnet64 import SNResNetProjectionDiscriminator
+            if args.proj_cond:
+                from .discriminators.snresnet64 import SNResNetProjectionDiscriminator_simple_proj as SNResNetProjectionDiscriminator
+            else:
+                from .discriminators.snresnet64 import SNResNetProjectionDiscriminator_simple as SNResNetProjectionDiscriminator
         elif self.patch_size == 128:
             from .discriminators.snresnet128 import SNResNetProjectionDiscriminator            
         else:
@@ -655,8 +709,10 @@ class WRN_gan(nn.Module):
         z = self.latent_decoder(z)
         z = z.view(z.size(0), self.enc_channels, self.enc_spatial_dim_x, self.enc_spatial_dim_y)
         x = self.decoder(z)
-        x = torch.tanh(x)
-        # x = torch.sigmoid(x)
+        if self.tanh:
+            x = torch.tanh(x)
+        else:
+            x = torch.sigmoid(x)
         return x
 
     def generate(self, batch_size=None):
@@ -677,9 +733,13 @@ class WRN_gan(nn.Module):
             classification_samples[i] = self.classifier(z)
         return classification_samples, output_samples, z_mean, z_std
 
-    def forward_D(self, x, y=None):
-        x = self.discriminator(x)
-        return x 
+    def forward_D(self, x, y=None, feature_wise_loss=False):
+        if feature_wise_loss:
+            x, inter_x = self.discriminator(x,y,feature_wise_loss)
+            return x, inter_x 
+        else:
+            x = self.discriminator(x)
+            return x 
 
 class WRN_enc_res_dec_gan(nn.Module):
     """
@@ -771,8 +831,8 @@ class WRN_enc_res_dec_gan(nn.Module):
             from .discriminators.snresnet32 import SNResNetProjectionDiscriminator
         elif self.patch_size == 64:
             from .generators.resnet64 import ResNetGenerator
-            # from .discriminators.snresnet64 import SNResNetProjectionDiscriminator
-            from .discriminators.snresnet64 import SNResNetProjectionDiscriminator_mer as SNResNetProjectionDiscriminator
+            from .discriminators.snresnet64 import SNResNetProjectionDiscriminator
+            # from .discriminators.snresnet64 import SNResNetProjectionDiscriminator_mer as SNResNetProjectionDiscriminator
             # from .discriminators.stargan import starganGenerator as ResNetGenerator
             # from .discriminators.stargan import starganDiscriminator as SNResNetProjectionDiscriminator
             # from .discriminators.dcgan import DcganGenerator as ResNetGenerator

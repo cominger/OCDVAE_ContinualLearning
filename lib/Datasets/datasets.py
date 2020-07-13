@@ -413,6 +413,7 @@ class Flower17:
     def __init__(self, is_gpu, args):
         self.num_classes = 17
         self.gray_scale = args.gray_scale
+        self.tanh = args.tanh
 
         self.train_transforms, self.val_transforms = self.__get_transforms(args.patch_size)
 
@@ -458,19 +459,29 @@ class Flower17:
                 ])
         else:
             resize = patch_size + int(math.ceil(patch_size * 0.1))
-            train_transforms = transforms.Compose([
+            train_transforms_list = [
                 transforms.RandomHorizontalFlip(),
                 transforms.Resize(patch_size),
                 transforms.CenterCrop(patch_size),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5, 0.5, 0.5)),
-            ])
-
-            val_transforms = transforms.Compose([
+            ]
+            val_transforms_list = [
                 transforms.Resize(size=(patch_size, patch_size)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5,0.5,0.5), std=(0.5, 0.5, 0.5)),
-            ])
+                transforms.ToTensor(),]
+
+            if self.tanh:
+                train_transforms_list.append(\
+                        transforms.Normalize(\
+                            mean=(0.5,0.5,0.5),\
+                             std=(0.5, 0.5, 0.5)\
+                        ))
+                val_transforms_list.append(\
+                        transforms.Normalize(\
+                            mean=(0.5,0.5,0.5),\
+                             std=(0.5, 0.5, 0.5)\
+                        ))
+            train_transforms = transforms.Compose(train_transforms_list)
+            val_transforms = transforms.Compose(val_transforms_list)
 
         return train_transforms, val_transforms
 

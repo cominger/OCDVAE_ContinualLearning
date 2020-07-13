@@ -106,9 +106,22 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
             class_samples, recon_samples, mu, std = model(inp)
             mu_label = None
 
-            # OCDVAE calculate loss
-            class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
+            n,b,c,x,y = recon_samples.shape
+            if args.recon_loss == "pixel":
+                recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label)
+                # OCDVAE calculate loss
+                class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_samples, recon_target, mu, std,
                                                          device, args)
+            elif args.recon_loss == "feature":
+                recon_z, recon_zf = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label, feature_wise_loss=True)
+                _, target_zf = model.module.forward_D(recon_target.detach(), mu_label, feature_wise_loss=True)
+                # OCDVAE calculate loss
+                recon_zf = recon_zf.unsqueeze(0)       
+                class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_zf, target_zf, mu, std,
+                                                         device, args)
+            else:
+                print("wrong type of recon loss")
+                exit()
 
             output = torch.mean(class_samples, dim=0)
             # record precision/accuracy and losses
@@ -118,9 +131,6 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
             class_losses.update(class_loss.item(), inp.size(0))
             recon_losses.update(recon_loss.item(), inp.size(0))
             kld_losses.update(kld_loss.item(), inp.size(0))
-
-            n,b,c,x,y = recon_samples.shape
-            recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label)
 
             GAN_G_loss = - torch.mean(recon_z)
             G_losses_fake.update(GAN_G_loss.item(), inp.size(0))
@@ -141,7 +151,7 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
             G_losses.update(G_loss.item(), inp.size(0))
 
             loss = args.var_cls_beta * class_loss + \
-                    args.l1_weight * recon_loss + \
+                    args.recon_weight * recon_loss + \
                     args.var_beta * kld_loss + \
                     args.var_gan_weight * GAN_G_loss + \
                     args.perception_weight * GAN_Enc_loss
@@ -195,6 +205,7 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
     writer.add_scalar('training/train_G_loss', G_losses.avg, epoch)
     writer.add_scalar('training/train_G_loss_fake', G_losses_fake.avg, epoch)
     writer.add_scalar('training/train_G_percetion_loss', G_losses_enc.avg, epoch)
+
 
     # If the log weights argument is specified also add parameter and gradient histograms to TensorBoard.
     if args.log_weights:
