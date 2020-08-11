@@ -31,9 +31,11 @@ def unified_loss_function(output_samples_classification, target, output_samples_
     if args.autoregression:
         recon_loss = nn.CrossEntropyLoss(reduction='sum')
     else:
-        recon_loss = nn.MSELoss(reduction='sum')
+        if args.recon_loss == "pixel":
+            recon_loss = nn.L1Loss(reduction='sum')
+        elif args.recon_loss == "feature":
+            recon_loss = nn.MSELoss(reduction='sum')
         # recon_loss = nn.BCELoss(reduction='sum')
-        # recon_loss = nn.L1Loss(reduction='sum')
         # recon_loss = nn.L1Loss()
 
     class_loss = nn.CrossEntropyLoss(reduction='sum')

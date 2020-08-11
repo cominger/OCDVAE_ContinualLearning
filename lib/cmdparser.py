@@ -20,6 +20,7 @@ parser.add_argument('--gray-scale', default=False, type=bool, help='use gray sca
 parser.add_argument('-noise', '--denoising-noise-value', default=0, type=float,
                     help='noise value for denoising. (float in range [0, 1]. Default: 0.25)')
 parser.add_argument('--blur', action = "store_true", help='turn on de-blurring')
+parser.add_argument('-hole','--punch-hole', action = "store_true", help='turn on inpainting')
 
 
 # Architecture and weight-init
@@ -124,20 +125,21 @@ parser.add_argument('--gan-loss', default='hinge-gan', help='gan loss type \
                                                             ex) gan: higne-gan, wgan-gp, lsgan, \
                                                                 vae-gan: vae-hing_gan, vae-wgan-gp')
 
+parser.add_argument('--ratio', default = 1, type=int, help='discriminator to generator ratio. Default is 1:1')
 parser.add_argument('--gen-learning-rate', default = 1e-4, type=float, help ='train generator as gan fashion')
 parser.add_argument('--dis-learning-rate', default = 1e-4, type=float, help ='train discriminator as gan fashion')
 parser.add_argument('--num-dis-feature', default=64, type=int, help='number of total epochs to run')
 parser.add_argument('--num-gan-feature', default=64, type=int, help='number of total epochs to run')
 
+parser.add_argument('--extra-z-samples', action = "store_true", help = 'feed z samples generation to discriminator')
+parser.add_argument('--only-z-samples', action = "store_true", help = 'feed only z samples generation to discriminator')
 parser.add_argument('--var-gan-weight', default = 1, type = float)
 
 parser.add_argument('--recon-weight', default = 1, type = float)
-parser.add_argument('--recon-loss', default='pixel', help='gan loss type \
-                                                            ex) gan: higne-gan, wgan-gp, lsgan, \
-                                                                vae-gan: vae-hing_gan, vae-wgan-gp')
+parser.add_argument('--recon-loss', default='pixel', help='recon_loses calculated point. option:pixel, feature')
 
 
-parser.add_argument('--perception-weight', default = 0, type = float)
+parser.add_argument('--alignment-weight', default = 0, type = float)
 parser.add_argument('--lambda-gp', default = 10, type = float)
 
 # add
@@ -153,6 +155,5 @@ parser.add_argument('--no-init-model', action = "store_true")
 
 #introvae
 parser.add_argument('--introvae', action = "store_true")
-parser.add_argument('--extra-z-samples', action = "store_true")
 
 

@@ -27,10 +27,8 @@ class SNResNetProjectionDiscriminator_mer(nn.Module):
                             activation=activation, downsample=True)
         self.block5 = Block(num_features * 8, num_features * 8,
                             activation=activation, downsample=True)
-        self.l6 = utils.spectral_norm(nn.Linear(num_features * 8*4*4, 1))
-        if num_classes > 0:
-            self.l_y = utils.spectral_norm(
-                nn.Embedding(num_classes, num_features * 16))
+        self.l6 = nn.Linear(num_features * 8*4*4, 1)
+        self.l_y = nn.Linear(args.var_latent_dim, num_features * 8)
 
         self._initialize()
 
@@ -71,16 +69,13 @@ class SNResNetProjectionDiscriminator_simple(nn.Module):
         self.num_classes = num_classes
         self.activation = activation
 
-        self.block1 = OptimizedBlock(3, num_features)    #32
+        # self.block1 = OptimizedBlock(3, num_features)    #32
+        self.block1 = nn.Conv2d(3, num_features, kernel_size=3, stride=1,padding=1)
         self.block2 = Block(num_features, num_features * 4,
                             activation=activation, downsample=True)   #16
         self.block5 = Block(num_features * 4, num_features * 4,
                             activation=activation, downsample=True)   #8
         self.l6 = utils.spectral_norm(nn.Linear(num_features * 4 * 8 * 8, 1))
-        # self.l6 = utils.spectral_norm(nn.Linear(num_features * 4, 1))
-        # if num_classes > 0:
-            # self.l_y = utils.spectral_norm(
-            #     nn.Embedding(num_classes, num_features * 16))
         self.l_y = nn.Linear(args.var_latent_dim, num_features*4)
 
         self._initialize()
@@ -94,9 +89,9 @@ class SNResNetProjectionDiscriminator_simple(nn.Module):
     def forward(self, x, y=None, feature_wise_loss=False):
         h = x
         h = self.block1(h)
+        h = self.block2(h)
         if feature_wise_loss:
             feature_response = h
-        h = self.block2(h)
         # h = self.block3(h)
         # h = self.block4(h)
         h = self.block5(h)

@@ -65,9 +65,15 @@ def main():
         if args.gan_loss == 'wgan-gp':
             from lib.Training.train_wgan_gp import train
         elif args.gan_loss == 'lsgan':
-            from lib.Training.train_lsgan import train
+            if args.proj_cond:
+                from lib.Training.train_lsgan_proj import train
+            else:
+                from lib.Training.train_lsgan import train
         elif args.gan_loss == 'hinge-gan':
-            from lib.Training.train_hinge import train
+            if args.proj_cond:
+                from lib.Training.train_hinge_proj import train
+            else:
+                from lib.Training.train_hinge import train
 
         # #VAE_gan based update
         # elif args.gan_loss == "vae-wgan-gp":

@@ -6,8 +6,18 @@ from lib.Utility.metrics import accuracy
 from lib.Utility.visualization import visualize_confusion
 from lib.Utility.visualization import visualize_image_grid
 import lib.OpenSet.meta_recognition as mr
-from .augmentation import blur_data
+from .augmentation import blur_data, hole_data
+def KLD(mu, std):
+    # numerical value for stability of log computation
+    eps = 1e-8
 
+    # Compute the KL divergence, normalized by latent dimensionality
+    kld = -0.5 * torch.sum(1 + torch.log(eps + std ** 2) - (mu ** 2) - (std ** 2)) / torch.numel(mu)
+
+    return kld
+def reparameterize(mu, std):
+        eps = std.data.new(std.size()).normal_()
+        return eps.mul(std).add(mu)
 def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimizer_disc, writer, device, save_path, args):
     """
     Trains/updates the model for one epoch on the training dataset.
@@ -62,8 +72,11 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
         #     noise = torch.randn(inp.size()).to(device) * args.denoising_noise_value
         #     inp = inp + noise
 
-        # if args.blur:
-        #     inp = blur_data(inp, args.patch_size, device)
+        if args.punch_hole:
+            inp = hole_data(inp, args.patch_size, device)
+            
+        if args.blur:
+            inp = blur_data(inp, args.patch_size, device)
 
         # measure data loading time
         data_time.update(time.time() - end)
@@ -80,14 +93,15 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
         #update Recon Image
         class_samples, recon_samples, mu, std = model(inp)
         n,b,c,x,y = recon_samples.shape 
-        recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)).detach(), mu_label)
+        recon_z = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label)
         D_loss_fake = torch.mean(torch.nn.functional.relu(1. + recon_z)) #hinge
 
         #update generate Image
-        fake_samples = model.module.generate(recon_target.size(0))
-        fake_z = model.module.forward_D(fake_samples, mu_label)
-        D_loss_fake += torch.mean(torch.nn.functional.relu(1. + fake_z)) #hinge
-        D_loss_fake *= 0.5
+        if args.extra_z_samples:
+            fake_samples = model.module.generate(recon_target.size(0))
+            fake_z = model.module.forward_D(fake_samples, mu_label)
+            D_loss_fake += torch.mean(torch.nn.functional.relu(1. + fake_z)) #hinge
+            D_loss_fake *= 0.5
 
         D_losses_fake.update(D_loss_fake.item(), inp.size(0))
         GAN_D_loss = (D_loss_real + D_loss_fake)  
@@ -114,11 +128,13 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
                                                          device, args)
             elif args.recon_loss == "feature":
                 recon_z, recon_zf = model.module.forward_D((recon_samples.view(n*b,c,x,y)), mu_label, feature_wise_loss=True)
-                _, target_zf = model.module.forward_D(recon_target.detach(), mu_label, feature_wise_loss=True)
+                _, target_zf = model.module.forward_D(recon_target, mu_label, feature_wise_loss=True)
                 # OCDVAE calculate loss
                 recon_zf = recon_zf.unsqueeze(0)       
                 class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_zf, target_zf, mu, std,
                                                          device, args)
+                # class_loss, recon_loss, kld_loss = criterion(class_samples, class_target, recon_zf, target_zf.detach(), mu, std,
+                #                                          device, args)
             else:
                 print("wrong type of recon loss")
                 exit()
@@ -133,20 +149,52 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
             kld_losses.update(kld_loss.item(), inp.size(0))
 
             GAN_G_loss = - torch.mean(recon_z)
+            if args.extra_z_samples:
+                fake_samples = model.module.generate(recon_target.size(0))
+                fake_z = model.module.forward_D(fake_samples, mu_label)
+                GAN_G_loss += - torch.mean(fake_z)
+                GAN_G_loss *= 0.5
             G_losses_fake.update(GAN_G_loss.item(), inp.size(0))
 
-            #Perception Loss
-            if args.perception_weight > 0:
-                with torch.no_grad():
-                    real_mu, real_std = model.module.encode(recon_target)
-                recon_mu,recon_std = model.module.encode((recon_samples.view(n*b,c,x,y)).detach())
-                GAN_Enc_loss = torch.nn.L1Loss()(recon_mu, real_mu)
+            #alignment Loss
+            if args.alignment_weight > 0:
+                # model.eval()
+                # recon_mu,recon_std = model.module.encode((recon_samples.view(n*b,c,x,y)).detach())
+                # model.train()
+                # GAN_Enc_loss = torch.log(recon_std/std) +\
+                #                  (std**2+(mu-recon_mu)**2)/2*recon_std**2 +\
+                #                  -0.5
+                recon_mu,recon_std = model.module.encode((recon_samples.view(n*b,c,x,y)))
+                input_dist = reparameterize(mu, std)
+                recon_dist = reparameterize(recon_mu, recon_std)
+                euclid_loss = torch.nn.KLDivLoss()
+                recon_dist = torch.nn.functional.log_softmax(recon_dist/2, dim=1) #pytorch kld div implement 
+                input_dist = torch.nn.functional.softmax(input_dist/2, dim=1) #pytorch kld div implement 
+                GAN_Enc_loss = euclid_loss(recon_dist, input_dist)
+                # euclid_loss = torch.nn.MSELoss()
+                # GAN_Enc_loss = euclid_loss(recon_dist, input_dist)
+                # cos = torch.nn.CosineSimilarity()
+                # GAN_Enc_loss = cos(recon_dist,input_dist)
+                # eps = 1e-8
+                # # Compute the KL divergence, normalized by latent dimensionality
+                # # GAN_Enc_loss = -0.5 * torch.sum( \
+                # #     1 + torch.log(((eps + recon_std)/std)** 2) \
+                # #     - ((recon_std ** 2) + ((recon_mu - mu) ** 2)) /((eps + std)**2) \
+                # #     ) / torch.numel(mu)
+                # GAN_Enc_loss = torch.sum( \
+                #     torch.log((eps+std)/(eps+recon_std)) + \
+                #     ((recon_std ** 2) + ((recon_mu - mu) ** 2)) /(2*(eps + std)**2) \
+                #     - 0.5
+                #     ) / torch.numel(mu)
+                # TODO: add extra_z_sampling cycle_loss
+                # if args.extra_z_samples:
+
             else:
                 GAN_Enc_loss = torch.tensor(0)
 
             G_losses_enc.update(GAN_Enc_loss.item(), inp.size(0))
             G_loss = args.var_gan_weight * GAN_G_loss + \
-                    args.perception_weight * GAN_Enc_loss
+                    args.alignment_weight * GAN_Enc_loss
 
             G_losses.update(G_loss.item(), inp.size(0))
 
@@ -154,7 +202,7 @@ def train(Dataset, model, criterion, epoch, optimizer_enc, optimizer_dec, optimi
                     args.recon_weight * recon_loss + \
                     args.var_beta * kld_loss + \
                     args.var_gan_weight * GAN_G_loss + \
-                    args.perception_weight * GAN_Enc_loss
+                    args.alignment_weight * GAN_Enc_loss
 
             losses.update(loss.item(), inp.size(0))
 

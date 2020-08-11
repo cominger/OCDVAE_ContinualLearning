@@ -254,7 +254,7 @@ def main():
             print("=> no checkpoint found at '{}'".format(args.resume))
 
     # optimize until final amount of epochs is reached. Final amount of epochs is determined through the
-    mergan_task_location = "/media/cvpr-miu/4TB_1/yonggis/il_related/MeRGAN_yhgon/MeRGAN-master/result/flower17_base_2_step_1_RA_1e_3_run2/gen_samples/"
+    mergan_task_location = "/media/cvpr-miu/4TB_1/yonggis/il_related/MeRGAN_yhgon/MeRGAN-master/result/flower17_base_2_step_1_RA_1e_3/gen_samples/"
     task_number = 1 
     while epoch < (args.epochs * epoch_multiplier):
         if (epoch+2)%args.epochs == 0:

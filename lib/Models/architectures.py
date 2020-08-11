@@ -687,7 +687,7 @@ class WRN_gan(nn.Module):
             else:
                 from .discriminators.snresnet64 import SNResNetProjectionDiscriminator_simple as SNResNetProjectionDiscriminator
         elif self.patch_size == 128:
-            from .discriminators.snresnet128 import SNResNetProjectionDiscriminator            
+            from .discriminators.snresnet128 import SNResNetProjectionDiscriminator_simple as SNResNetProjectionDiscriminator
         else:
             print("wrong patch_size")
             exit()

@@ -466,7 +466,9 @@ class Flower17:
                 transforms.ToTensor(),
             ]
             val_transforms_list = [
-                transforms.Resize(size=(patch_size, patch_size)),
+                # transforms.Resize(size=(patch_size, patch_size)),
+                transforms.Resize(patch_size),
+                transforms.CenterCrop(patch_size),
                 transforms.ToTensor(),]
 
             if self.tanh:

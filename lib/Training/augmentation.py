@@ -3,6 +3,7 @@ import random
 import cv2
 import collections
 import numpy as np
+import math
 from skimage.filters import gaussian
 from scipy.ndimage import zoom as scizoom
 import torchvision.transforms as transforms
@@ -68,8 +69,13 @@ def blur_data(batch, patch_size, device):
 
     batch = batch.cpu()
 
+    image_mean=torch.FloatTensor([0.5,0.5,0.5]).view(3,1,1)
+    image_std=torch.FloatTensor([0.5, 0.5, 0.5]).view(3,1,1)
     convert_img = transforms.Compose([transforms.ToPILImage()])
-    convert_tensor = transforms.Compose([transforms.ToTensor()])
+    convert_tensor = transforms.Compose([transforms.ToTensor(), transforms.Normalize(\
+                            mean=(0.5,0.5,0.5),\
+                             std=(0.5, 0.5, 0.5))\
+    ])
 
     blurs = get_blurs()
     random_method = random.choice(list(blurs.keys()))
@@ -78,7 +84,39 @@ def blur_data(batch, patch_size, device):
         severity = random.randint(0, 5)
         if severity > 0:
             blur = lambda clean_img: blurs[random_method](clean_img, severity, patch_size)
+            batch[i] = batch[i]*image_mean + image_std
             batch[i] = convert_tensor(blur(convert_img(batch[i]))).float() / 255.
+
+    return batch.to(device)
+
+def hole_data(batch, patch_size, device):
+    # currently no GPU implementation
+
+    batch = batch.cpu()
+
+    image_mean=torch.FloatTensor([0.5,0.5,0.5]).view(3,1,1)
+    image_std=torch.FloatTensor([0.5, 0.5, 0.5]).view(3,1,1)
+    convert_img = transforms.Compose([transforms.ToPILImage()])
+    convert_tensor = transforms.Compose([transforms.ToTensor(), transforms.Normalize(\
+                            mean=(0.5,0.5,0.5),\
+                             std=(0.5, 0.5, 0.5))\
+    ])
+
+    hole_size = int(patch_size/10*2) * int(patch_size/10*2)
+    hole_min = math.ceil( hole_size / patch_size)
+    assert hole_size/hole_min < patch_size 
+    hole_edge = np.random.randint(low=hole_min, high=patch_size, size=(batch.size(0),1))
+
+    for i in range(len(batch)):
+        severity = random.randint(0, 1)
+        if severity > 0:
+            x_side = int(hole_size/hole_edge[i])
+            y_side = int(hole_edge[i])
+            random_point_x=np.random.randint(low=0, high=patch_size-x_side)
+            random_point_y=np.random.randint(low=0, high=patch_size-y_side)
+            batch[i][:,\
+                       random_point_x:random_point_x+x_side, \
+                       random_point_y:random_point_y+y_side] = -1
 
     return batch.to(device)
 
