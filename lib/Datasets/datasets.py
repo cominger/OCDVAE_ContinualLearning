@@ -1754,3 +1754,272 @@ class CUB200:
             num_workers=workers, pin_memory=is_gpu)
 
         return train_loader, val_loader
+
+class Imagenette:
+    """
+    Actually just a variant of CUSTOM dataset and uses ImageFolder
+    for any data-loading. Main difference is in definition of transforms
+    and pre-calculated preprocessing parameters for 1000 class ILSVRC
+    2012 dataset.
+
+    Parameters:
+        is_gpu (bool): True if CUDA is enabled.
+            Sets value of pin_memory in DataLoader.
+
+    Attributes:
+        traindir (str): Path to train dataset as required by
+            torchvision.datasets.ImageFolder
+        valdir (str): Path to validation dataset as required by
+            torchvision.datasets.ImageFolder
+        normalize (dict): Contains per-channel means and stds of the dataset.
+        train_transforms (torchvision.transforms): Composition of transforms
+            including conversion to Tensor, center
+            crops of size 224 x 224 and normalization.
+        val_transforms (torchvision.transforms): Composition of transforms
+            including conversion to Tensor, scaling of shorter side to
+            256 followed by a center crop of 224 x 224 and normalization.
+        trainset (torch.utils.data.TensorDataset): Training set wrapper.
+        valset (torch.utils.data.TensorDataset): Validation set wrapper.
+        train_loader (torch.utils.data.DataLoader): Training set loader with shuffling.
+        val_loader (torch.utils.data.DataLoader): Validation set loader.
+    """
+
+    def __init__(self, is_gpu, args):
+        self.valdir = args.val_data_path
+        self.traindir = args.train_data_path
+
+        self.num_classes = 10
+        self.gray_scale = args.gray_scale
+        self.tanh = args.tanh
+
+        self.train_transforms, self.val_transforms = self.__get_transforms(args.patch_size)
+
+        self.trainset, self.valset = self.get_dataset()
+        self.train_loader, self.val_loader = self.get_dataset_loader(args.batch_size, args.workers, is_gpu)
+
+        self.class_to_idx = {'tench': 0,
+                             'English springer': 1,
+                             'casette player': 2,
+                             'chain saw': 3,
+                             'church': 4,
+                             'French Horn': 5,
+                             'garbage truck': 6,
+                             'gas pump': 7,
+                             'golf ball': 8,
+                             'parachute': 9}
+
+    def __get_transforms(self, patch_size):
+        if self.gray_scale:
+            train_transforms = transforms.Compose([
+                transforms.Resize(size=(patch_size, patch_size)),
+                transforms.Grayscale(num_output_channels=1),
+                transforms.ToTensor(),
+                ])
+
+            val_transforms = transforms.Compose([
+                transforms.Resize(size=(patch_size, patch_size)),
+                transforms.Grayscale(num_output_channels=1),
+                transforms.ToTensor(),
+                ])
+        else:
+            resize = patch_size + int(math.ceil(patch_size * 0.1))
+            train_transforms_list = [
+                transforms.RandomHorizontalFlip(),
+                transforms.Resize(patch_size),
+                transforms.CenterCrop(patch_size),
+                transforms.ToTensor(),
+            ]
+            val_transforms_list = [
+                # transforms.Resize(size=(patch_size, patch_size)),
+                transforms.Resize(patch_size),
+                transforms.CenterCrop(patch_size),
+                transforms.ToTensor(),]
+
+            if self.tanh:
+                train_transforms_list.append(\
+                        transforms.Normalize(\
+                            mean=(0.5,0.5,0.5),\
+                             std=(0.5, 0.5, 0.5)\
+                        ))
+                val_transforms_list.append(\
+                        transforms.Normalize(\
+                            mean=(0.5,0.5,0.5),\
+                             std=(0.5, 0.5, 0.5)\
+                        ))
+            train_transforms = transforms.Compose(train_transforms_list)
+            val_transforms = transforms.Compose(val_transforms_list)
+
+        return train_transforms, val_transforms
+
+    def get_dataset(self):
+        """
+        Uses torchvision.datasets.ImageFolder to load dataset
+        from traindir and valdir respectively.
+
+        Returns:
+             torch.utils.data.TensorDataset: trainset, valset
+        """
+        trainset = datasets.ImageFolder(self.traindir, self.train_transforms)
+        valset = datasets.ImageFolder(self.valdir, self.val_transforms)
+
+        return trainset, valset
+
+    def get_dataset_loader(self, batch_size, workers, is_gpu):
+        """
+        Defines the dataset loader for wrapped dataset
+
+        Parameters:
+            batch_size (int): Defines the batch size in data loader
+            workers (int): Number of parallel threads to be used by data loader
+            is_gpu (bool): True if CUDA is enabled so pin_memory is set to True
+
+        Returns:
+             torch.utils.data.TensorDataset: trainset, valset
+        """
+
+        train_loader = torch.utils.data.DataLoader(
+            self.trainset,
+            batch_size=batch_size, shuffle=True,
+            num_workers=workers, pin_memory=is_gpu, sampler=None)
+
+        val_loader = torch.utils.data.DataLoader(
+            self.valset,
+            batch_size=batch_size, shuffle=False,
+            num_workers=workers, pin_memory=is_gpu)
+
+        return train_loader, val_loader
+
+
+class Imagewoof:
+    """
+    Actually just a variant of CUSTOM dataset and uses ImageFolder
+    for any data-loading. Main difference is in definition of transforms
+    and pre-calculated preprocessing parameters for 1000 class ILSVRC
+    2012 dataset.
+
+    Parameters:
+        is_gpu (bool): True if CUDA is enabled.
+            Sets value of pin_memory in DataLoader.
+
+    Attributes:
+        traindir (str): Path to train dataset as required by
+            torchvision.datasets.ImageFolder
+        valdir (str): Path to validation dataset as required by
+            torchvision.datasets.ImageFolder
+        normalize (dict): Contains per-channel means and stds of the dataset.
+        train_transforms (torchvision.transforms): Composition of transforms
+            including conversion to Tensor, center
+            crops of size 224 x 224 and normalization.
+        val_transforms (torchvision.transforms): Composition of transforms
+            including conversion to Tensor, scaling of shorter side to
+            256 followed by a center crop of 224 x 224 and normalization.
+        trainset (torch.utils.data.TensorDataset): Training set wrapper.
+        valset (torch.utils.data.TensorDataset): Validation set wrapper.
+        train_loader (torch.utils.data.DataLoader): Training set loader with shuffling.
+        val_loader (torch.utils.data.DataLoader): Validation set loader.
+    """
+
+    def __init__(self, is_gpu, args):
+        self.valdir = args.val_data_path
+        self.traindir = args.train_data_path
+
+        self.num_classes = 10
+        self.gray_scale = args.gray_scale
+        self.tanh = args.tanh
+
+        self.train_transforms, self.val_transforms = self.__get_transforms(args.patch_size)
+
+        self.trainset, self.valset = self.get_dataset()
+        self.train_loader, self.val_loader = self.get_dataset_loader(args.batch_size, args.workers, is_gpu)
+
+        self.class_to_idx = {'Shih-Tzu': 0,
+                             'Rhodesian ridgeback': 1,
+                             'Beagle': 2,
+                             'English foxhound': 3,
+                             'Border terrier': 4,
+                             'Australian terrier': 5,
+                             'Golden retriever': 6,
+                             'Old English sheepdog': 7,
+                             'Samoyed': 8,
+                             'Dingo': 9}
+
+    def __get_transforms(self, patch_size):
+        if self.gray_scale:
+            train_transforms = transforms.Compose([
+                transforms.Resize(size=(patch_size, patch_size)),
+                transforms.Grayscale(num_output_channels=1),
+                transforms.ToTensor(),
+                ])
+
+            val_transforms = transforms.Compose([
+                transforms.Resize(size=(patch_size, patch_size)),
+                transforms.Grayscale(num_output_channels=1),
+                transforms.ToTensor(),
+                ])
+        else:
+            resize = patch_size + int(math.ceil(patch_size * 0.1))
+            train_transforms_list = [
+                transforms.RandomHorizontalFlip(),
+                transforms.Resize(patch_size),
+                transforms.CenterCrop(patch_size),
+                transforms.ToTensor(),
+            ]
+            val_transforms_list = [
+                # transforms.Resize(size=(patch_size, patch_size)),
+                transforms.Resize(patch_size),
+                transforms.CenterCrop(patch_size),
+                transforms.ToTensor(),]
+
+            if self.tanh:
+                train_transforms_list.append(\
+                        transforms.Normalize(\
+                            mean=(0.5,0.5,0.5),\
+                             std=(0.5, 0.5, 0.5)\
+                        ))
+                val_transforms_list.append(\
+                        transforms.Normalize(\
+                            mean=(0.5,0.5,0.5),\
+                             std=(0.5, 0.5, 0.5)\
+                        ))
+            train_transforms = transforms.Compose(train_transforms_list)
+            val_transforms = transforms.Compose(val_transforms_list)
+
+        return train_transforms, val_transforms
+
+    def get_dataset(self):
+        """
+        Uses torchvision.datasets.ImageFolder to load dataset
+        from traindir and valdir respectively.
+
+        Returns:
+             torch.utils.data.TensorDataset: trainset, valset
+        """
+        trainset = datasets.ImageFolder(self.traindir, self.train_transforms)
+        valset = datasets.ImageFolder(self.valdir, self.val_transforms)
+
+        return trainset, valset
+
+    def get_dataset_loader(self, batch_size, workers, is_gpu):
+        """
+        Defines the dataset loader for wrapped dataset
+
+        Parameters:
+            batch_size (int): Defines the batch size in data loader
+            workers (int): Number of parallel threads to be used by data loader
+            is_gpu (bool): True if CUDA is enabled so pin_memory is set to True
+
+        Returns:
+             torch.utils.data.TensorDataset: trainset, valset
+        """
+
+        train_loader = torch.utils.data.DataLoader(
+            self.trainset,
+            batch_size=batch_size, shuffle=True,
+            num_workers=workers, pin_memory=is_gpu, sampler=None)
+
+        val_loader = torch.utils.data.DataLoader(
+            self.valset,
+            batch_size=batch_size, shuffle=False,
+            num_workers=workers, pin_memory=is_gpu)
+
+        return train_loader, val_loader
