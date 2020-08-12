@@ -9,4 +9,4 @@ CUDA_VISIBLE_DEVICES=0 python main.py --dataset Flower17 -j 4 -p 64 -b 32 -a WRN
 
 
 
-CUDA_VISIBLE_DEVICES=0 python main.py --dataset Imagewoof -j 4 -p 64 -b 32 -a WRN_gan --wrn-depth 26 --gan --visualization-epoch 20 --incremental-data True --num-base-task 1 --num-increment-tasks 1 --num-dis-feature 64 --openset-generative-replay True -genreplay True --epoch 4000 --var-latent-dim 64  --recon-weight 10 --var-gan-weight 1 --var-beta 1 --FID --gan-loss hinge-gan --learning-rate 0.0001 --gen-learning-rate 0.0001 --dis-learning-rate 0.0001 --tanh -big-wrn True --blur
+CUDA_VISIBLE_DEVICES=0 python main.py --dataset Imagewoof -j 4 -p 64 -b 32 -a WRN_gan --wrn-depth 26 --gan --visualization-epoch 20 --incremental-data True --num-base-task 1 --num-increment-tasks 1 --num-dis-feature 64 --openset-generative-replay True -genreplay True --epoch 4000 --var-latent-dim 64  --recon-weight 10 --var-gan-weight 1 --var-cls-beta 1 --var-beta 1 --FID --gan-loss hinge-gan --learning-rate 0.0001 --gen-learning-rate 0.0001 --dis-learning-rate 0.0001 --tanh -big-wrn True --blur

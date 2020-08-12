@@ -56,7 +56,7 @@ parser.add_argument('--resume', default='', type=str, help='path to model to loa
 # Variational parameters
 parser.add_argument('--var-latent-dim', default=60, type=int, help='Dimensionality of latent space')
 parser.add_argument('--var-beta', default=0.1, type=float, help='weight term for KLD loss (default: 0.1)')
-parser.add_argument('--var-cls-beta', default=1, type=float, help='weight term for KLD loss (default: 0.1)')
+parser.add_argument('--var-cls-beta', default=1, type=float, help='weight term for CLS loss (default: 1)')
 parser.add_argument('--var-samples', default=1, type=int,
                     help='number of samples for the expectation in variational training (default: 1)')
 parser.add_argument('--visualization-epoch', default=20, type=int, help='number of epochs after which generations/'
