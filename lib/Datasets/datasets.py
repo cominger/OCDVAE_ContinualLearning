@@ -1785,8 +1785,8 @@ class Imagenette:
     """
 
     def __init__(self, is_gpu, args):
-        self.valdir = args.val_data_path
-        self.traindir = args.train_data_path
+        # self.valdir = args.val_data_path
+        # self.traindir = args.train_data_path
 
         self.num_classes = 10
         self.gray_scale = args.gray_scale
@@ -1859,8 +1859,16 @@ class Imagenette:
         Returns:
              torch.utils.data.TensorDataset: trainset, valset
         """
-        trainset = datasets.ImageFolder(self.traindir, self.train_transforms)
-        valset = datasets.ImageFolder(self.valdir, self.val_transforms)
+        # trainset = datasets.ImageFolder(self.traindir, self.train_transforms)
+        # valset = datasets.ImageFolder(self.valdir, self.val_transforms)
+
+        root = './datasets/imagenette2'
+        
+        trainset = datasets.ImageFolder(root=root+'/train/', transform=self.train_transforms,
+                                         target_transform=None)
+        valset = datasets.ImageFolder(root=root+'/val/', transform=self.val_transforms,
+                                       target_transform=None)
+        self.class_to_idx = trainset.class_to_idx
 
         return trainset, valset
 
@@ -1920,8 +1928,8 @@ class Imagewoof:
     """
 
     def __init__(self, is_gpu, args):
-        self.valdir = args.val_data_path
-        self.traindir = args.train_data_path
+        # self.valdir = args.val_data_path
+        # self.traindir = args.train_data_path
 
         self.num_classes = 10
         self.gray_scale = args.gray_scale
@@ -1994,8 +2002,17 @@ class Imagewoof:
         Returns:
              torch.utils.data.TensorDataset: trainset, valset
         """
-        trainset = datasets.ImageFolder(self.traindir, self.train_transforms)
-        valset = datasets.ImageFolder(self.valdir, self.val_transforms)
+        # trainset = datasets.ImageFolder(self.traindir, self.train_transforms)
+        # valset = datasets.ImageFolder(self.valdir, self.val_transforms)
+
+        # return trainset, valset
+        root = './datasets/imagewoof2'
+        
+        trainset = datasets.ImageFolder(root=root+'/train/', transform=self.train_transforms,
+                                         target_transform=None)
+        valset = datasets.ImageFolder(root=root+'/val/', transform=self.val_transforms,
+                                       target_transform=None)
+        self.class_to_idx = trainset.class_to_idx
 
         return trainset, valset
 
